@@ -2269,7 +2269,7 @@ HB_BOOL hb_objGetVarRef( PHB_ITEM pObject, PHB_SYMB pMessage,
       {
          pExecSym->value.pFunPtr();
       }
-      else if( pStack->uiClass )
+      else
       {
          PCLASS pClass   = s_pClasses[ pStack->uiClass ];
          PMETHOD pMethod = pClass->pMethods + pStack->uiMethod;
@@ -5050,8 +5050,122 @@ typedef struct
 }
 HB_IVARINFO, * PHB_IVARINFO;
 
-static PHB_ITEM hb_objGetIVars( PHB_ITEM pObject,
-                                HB_USHORT uiScope, HB_BOOL fChanged )
+static HB_SIZE findGetMethod( PHB_ITEM pMethods, const char *szFindName, HB_SIZE nMethodsCount ) 
+{
+    HB_SIZE nIndex;
+    for (nIndex = 1; nIndex <= nMethodsCount; nIndex++) {
+       const char *szMethodName = hb_arrayGetCPtr( pMethods, nIndex );
+       if (strcmp(szFindName, szMethodName) == 0) 
+       {
+          return nIndex;
+       }
+    }
+    return 0;
+}
+
+PHB_ITEM hb_objGetVars( PHB_ITEM pObject, HB_USHORT nScope, HB_USHORT nParam )
+{
+   HB_STACK_TLS_PRELOAD
+   HB_USHORT uiClass;
+
+   if ( ! pObject || ! HB_IS_OBJECT( pObject ) )
+      return NULL;
+
+   uiClass = pObject->item.asArray.value->uiClass;
+
+   if ( uiClass && uiClass <= s_uiClasses )
+   {
+      PHB_ITEM pMethods;
+      PHB_ITEM pReturn;
+      PCLASS pClass = s_pClasses[ uiClass ];
+      PMETHOD pMethod = pClass->pMethods;
+      HB_SIZE nLimit = hb_clsMthNum( pClass );
+      HB_SIZE nMethodsCount = 0;
+      HB_SIZE nDataCount = 0;
+      HB_SIZE nIndex;
+
+      pMethods = hb_itemArrayNew( pClass->uiMethods );
+
+      do
+      {
+         if( pMethod->pMessage )  /* Hash Entry used ? */
+         {
+            if( ( nParam == HB_MSGLISTALL ) ||
+                ( nParam == HB_MSGLISTCLASS && hb_methodType( pMethod ) == HB_OO_MSG_CLASSDATA ) ||
+                ( nParam == HB_MSGLISTPURE && hb_methodType( pMethod ) != HB_OO_MSG_CLASSDATA ) )
+            {
+               if( nScope == 0 || ( pMethod->uiScope & nScope ) != 0 )
+               {
+                  hb_arraySetC( pMethods, ++nMethodsCount, pMethod->pMessage->pSymbol->szName );
+               }
+            }
+         }
+         ++pMethod;
+      }
+      while ( --nLimit && nMethodsCount < ( HB_SIZE ) pClass->uiMethods );
+
+      pReturn = hb_itemArrayNew( nMethodsCount );
+      for (nIndex = 1; nIndex <= nMethodsCount; nIndex++) 
+      {
+         const char *szMethodName = hb_arrayGetCPtr( pMethods, nIndex );
+         if (szMethodName[0] == '_') 
+         {
+            HB_SIZE nGetMethod = findGetMethod( pMethods, &szMethodName[1], nMethodsCount );
+            if (nGetMethod > 0) 
+            {
+               PHB_ITEM pEntry = hb_itemArrayNew( 2 );
+               hb_arraySet( pReturn, ++nDataCount, pEntry );
+               hb_arraySet( pEntry, 1, hb_arrayGetItemPtr( pMethods, nGetMethod ) );
+            }
+         }
+      }
+
+      hb_itemRelease( pMethods );
+      if ( nDataCount < nMethodsCount )
+         hb_arraySize( pReturn, nDataCount );
+
+      for (nIndex = 1; nIndex <= nDataCount; nIndex++) 
+      {
+         PHB_ITEM pEntry = hb_arrayGetItemPtr( pReturn, nIndex );
+         PHB_DYNS pMsgSym = hb_objGetMsgSym( hb_arrayGetItemPtr( pEntry, 1 ) );
+
+         if( pMsgSym )
+         {
+            PMETHOD pMethod = hb_clsFindMsg( s_pClasses[ uiClass ], pMsgSym );
+            if( pMethod )
+            {
+               PHB_ITEM pBase = hb_stackBaseItem();
+               pBase->item.asSymbol.stackstate->uiClass = uiClass;
+               pBase->item.asSymbol.stackstate->uiMethod =
+                     ( HB_USHORT ) ( pMethod - s_pClasses[ uiClass ]->pMethods );
+            }
+            hb_vmPushSymbol( pMsgSym->pSymbol );
+            hb_vmPush( pObject );
+            hb_vmSend( 0 );
+            hb_arraySet( pEntry, 2, hb_stackReturnItem() );
+         }
+         else
+         {
+            hb_errRT_BASE( EG_ARG, 3000, NULL, "hb_objGetVars()", 2, pObject, pMsgSym );
+         }
+               
+      }
+      return pReturn;
+   }
+   return NULL;
+}
+
+HB_FUNC( __OBJGETVARS )
+{
+   PHB_ITEM pObject = hb_param( 1, HB_IT_OBJECT );
+   HB_USHORT uiScope = ( HB_USHORT ) hb_parni( 2 );
+   HB_USHORT nParam = hb_parnidef( 3, HB_MSGLISTALL );
+
+   hb_itemReturnRelease( hb_objGetVars( pObject, uiScope, nParam ) );
+}
+
+
+static PHB_ITEM hb_objGetIVars( PHB_ITEM pObject, HB_USHORT uiScope, HB_BOOL fChanged )
 {
    PHB_IVARINFO pIndex, pInfo;
    PCLASS pClass;

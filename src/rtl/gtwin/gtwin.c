@@ -766,8 +766,6 @@ static void hb_gt_win_Init( PHB_GT pGT, HB_FHANDLE hFilenoStdin, HB_FHANDLE hFil
       }
    }
 
-   /* Try to allocate console if we haven't inherited any */
-   AllocConsole();
 #endif
 
    if( ( s_HInput = GetStdHandle( STD_INPUT_HANDLE ) ) == INVALID_HANDLE_VALUE )
@@ -779,6 +777,10 @@ static void hb_gt_win_Init( PHB_GT pGT, HB_FHANDLE hFilenoStdin, HB_FHANDLE hFil
          AllocConsole(); /* It is a Windows app without a console, so we create one */
          s_HInput = GetStdHandle( STD_INPUT_HANDLE );
       }
+#else      
+      /* Try to allocate console if we haven't inherited any */
+      AllocConsole();
+      s_HInput = GetStdHandle( STD_INPUT_HANDLE );
 #endif
       if( s_HInput == INVALID_HANDLE_VALUE )
          hb_errInternal( 10001, "Could not allocate console", NULL, NULL );
@@ -966,8 +968,10 @@ static HB_BOOL hb_gt_win_SetMode( PHB_GT pGT, int iRows, int iCols )
          }
       }
 
-      if( fRet )
+      if( fRet ) {
          hb_gt_win_xInitScreenParam( pGT );
+         fRet = HB_GTSUPER_SETMODE( pGT, coBuf.Y, coBuf.X );
+      }
    }
 
    return fRet;

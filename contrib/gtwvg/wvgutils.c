@@ -118,15 +118,15 @@ HB_FUNC( WVT_CHOOSEFONT )
    LOGFONT    lf;    /* = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0 }; */
    LONG       PointSize = 0;
 
-   if( HB_ISNUM( 2 ) )
+   if( HB_ISNUMBER( 2 ) )
       PointSize = -MulDiv( ( LONG ) hb_parnl( 2 ), GetDeviceCaps( _s->hdc, LOGPIXELSY ), 72 );
 
    lf.lfHeight         = PointSize;
    lf.lfWidth          = hb_parni( 3 );
    lf.lfWeight         = hb_parni( 4 );
-   lf.lfItalic         = HB_ISNUM( 6 ) ? ( BYTE ) hb_parni( 6 ) : ( BYTE ) hb_parl( 6 );
-   lf.lfUnderline      = HB_ISNUM( 7 ) ? ( BYTE ) hb_parni( 7 ) : ( BYTE ) hb_parl( 7 );
-   lf.lfStrikeOut      = HB_ISNUM( 8 ) ? ( BYTE ) hb_parni( 8 ) : ( BYTE ) hb_parl( 8 );
+   lf.lfItalic         = HB_ISNUMBER( 6 ) ? ( BYTE ) hb_parni( 6 ) : ( BYTE ) hb_parl( 6 );
+   lf.lfUnderline      = HB_ISNUMBER( 7 ) ? ( BYTE ) hb_parni( 7 ) : ( BYTE ) hb_parl( 7 );
+   lf.lfStrikeOut      = HB_ISNUMBER( 8 ) ? ( BYTE ) hb_parni( 8 ) : ( BYTE ) hb_parl( 8 );
    lf.lfCharSet        = DEFAULT_CHARSET;
    lf.lfQuality        = ( BYTE ) hb_parnidef( 5, DEFAULT_QUALITY );
    lf.lfPitchAndFamily = FF_DONTCARE;
@@ -351,7 +351,7 @@ HB_FUNC( WVT_SETTOOLTIPWIDTH )
 
    int iTipWidth = ( int ) SendMessage( _s->hWndTT, TTM_GETMAXTIPWIDTH, 0, 0 );
 
-   if( HB_ISNUM( 1 ) )
+   if( HB_ISNUMBER( 1 ) )
       SendMessage( _s->hWndTT, TTM_SETMAXTIPWIDTH, 0, ( LPARAM ) ( HB_PTRUINT ) hb_parnint( 1 ) );
 
    hb_retni( iTipWidth );
@@ -367,7 +367,7 @@ HB_FUNC( WVT_SETTOOLTIPBKCOLOR )
 
    COLORREF cr = ( COLORREF ) SendMessage( _s->hWndTT, TTM_GETTIPBKCOLOR, 0, 0 );
 
-   if( HB_ISNUM( 1 ) )
+   if( HB_ISNUMBER( 1 ) )
       SendMessage( _s->hWndTT, TTM_SETTIPBKCOLOR, ( WPARAM ) ( COLORREF ) hb_parnl( 1 ), 0 );
 
    hb_retnl( ( COLORREF ) cr );
@@ -383,7 +383,7 @@ HB_FUNC( WVT_SETTOOLTIPTEXTCOLOR )
 
    COLORREF cr = ( COLORREF ) SendMessage( _s->hWndTT, TTM_GETTIPTEXTCOLOR, 0, 0 );
 
-   if( HB_ISNUM( 1 ) )
+   if( HB_ISNUMBER( 1 ) )
       SendMessage( _s->hWndTT, TTM_SETTIPTEXTCOLOR, ( WPARAM ) ( COLORREF ) hb_parnl( 1 ), 0 );
 
    hb_retnl( ( COLORREF ) cr );
@@ -703,7 +703,7 @@ HB_FUNC( WVT_SETLASTMENUEVENT )
 
    int iEvent = _s->LastMenuEvent;
 
-   if( HB_ISNUM( 1 ) )
+   if( HB_ISNUMBER( 1 ) )
       _s->LastMenuEvent = hb_parni( 1 );
 
    hb_retni( iEvent );
@@ -715,7 +715,7 @@ HB_FUNC( WVT_SETMENUKEYEVENT )
 
    int iOldEvent = _s->MenuKeyEvent;
 
-   if( HB_ISNUM( 1 ) )
+   if( HB_ISNUMBER( 1 ) )
       _s->MenuKeyEvent = hb_parni( 1 );
 
    hb_retni( iOldEvent );
@@ -861,7 +861,7 @@ HB_FUNC( WVT_CREATEDIALOGDYNAMIC )
    }
 
    {
-      if( HB_ISNUM( 3 ) )
+      if( HB_ISNUMBER( 3 ) )
       {
          void * hTemplate;
          hDlg = CreateDialogIndirect( ( HINSTANCE ) wvg_hInstance(),
@@ -945,7 +945,7 @@ HB_FUNC( WVT_CREATEDIALOGMODAL )
    int        iIndex;
    int        iResource = hb_parni( 4 );
    HB_PTRDIFF iResult   = 0;
-   HWND       hParent   = HB_ISNUM( 5 ) ? ( HWND ) ( HB_PTRUINT ) hb_parnint( 5 ) : _s->hWnd;
+   HWND       hParent   = HB_ISNUMBER( 5 ) ? ( HWND ) ( HB_PTRUINT ) hb_parnint( 5 ) : _s->hWnd;
 
    /* check if we still have room for a new dialog */
    for( iIndex = 0; iIndex < WVT_DLGMD_MAX; iIndex++ )
@@ -1200,7 +1200,7 @@ HB_FUNC( WVT_DLGSETICON )
 {
    HICON hIcon;
 
-   if( HB_ISNUM( 2 ) )
+   if( HB_ISNUMBER( 2 ) )
       hIcon = LoadIcon( ( HINSTANCE ) wvg_hInstance(), MAKEINTRESOURCE( hb_parni( 2 ) ) );
    else
    {

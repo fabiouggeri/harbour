@@ -54,7 +54,8 @@
 #define _HB_TOK_RESPECT_BQUOTE   0x04
 #define _HB_TOK_ISDELIM          0x08
 #define _HB_TOK_EOL_DELIM        0x10
-#define _HB_TOK_STRIP_QUOTE      0x20
+#define _HB_TOK_STRIP_QUUTE      0x20
+#define _HB_TOK_STRIP_LAST_EMPTY 0x40
 
 static HB_SIZE hb_tokenCount( const char * szLine, HB_SIZE nLen,
                               const char * szDelim, HB_SIZE nDelim,
@@ -209,7 +210,13 @@ static PHB_ITEM hb_tokenArray( const char * szLine, HB_SIZE nLen,
             nStart = nPos + 1;
          }
       }
-      hb_arraySetCL( pArray, ++nToken, szLine + nStart, nPos - nStart );
+      if (nPos > nStart) {
+         hb_arraySetCL( pArray, ++nToken, szLine + nStart, nPos - nStart );
+      } else if (iFlags & _HB_TOK_STRIP_LAST_EMPTY) {
+         hb_arraySize( pArray, nTokens - 1 );
+      } else {
+         hb_arraySetCL( pArray, ++nToken, szLine + nStart, nPos - nStart );
+      }
    }
 
    return pArray;
@@ -350,6 +357,19 @@ HB_FUNC( HB_ATOKENS )
 
    if( hb_tokenParam( 2, 0, &szLine, &nLen, &szDelim, &nDelim, &iFlags ) )
       hb_itemReturnRelease( hb_tokenArray( szLine, nLen, szDelim, nDelim, iFlags ) );
+   else
+      hb_errRT_BASE_SubstR( EG_ARG, 1123, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+}
+
+
+HB_FUNC( XHB_ATOKENS )
+{
+   const char * szLine, * szDelim;
+   HB_SIZE nLen, nDelim;
+   int iFlags;
+
+   if( hb_tokenParam( 2, 0, &szLine, &nLen, &szDelim, &nDelim, &iFlags ) )
+      hb_itemReturnRelease( hb_tokenArray( szLine, nLen, szDelim, nDelim, iFlags | _HB_TOK_STRIP_LAST_EMPTY ) );
    else
       hb_errRT_BASE_SubstR( EG_ARG, 1123, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
 }

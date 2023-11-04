@@ -66,6 +66,8 @@ CREATE CLASS HBDbInput
    VAR nSize   AS INTEGER
    VAR cValue  AS CHARACTER
    VAR acColor AS ARRAY
+   VAR lFirst  AS LOGICAL    INIT .T.
+   VAR lInsert AS LOGICAL    INIT .T.
 
    EXPORTED:
 
@@ -77,6 +79,7 @@ CREATE CLASS HBDbInput
    METHOD showCursor()
    METHOD newPos( nRow, nCol )
    METHOD setColor( cColor )
+   METHOD setWidth( nNewWidth )
 
 ENDCLASS
 
@@ -102,7 +105,11 @@ METHOD SetColor( cColor ) CLASS HBDbInput
 
    RETURN Self
 
-METHOD newPos( nRow, nCol ) CLASS HBDbInput
+METHOD setWidth( nNewWidth ) CLASS HbDbInput
+   ::nWidth := nNewWidth
+   RETURN Self
+
+METHOD newPos( nRow, nCol ) CLASS HbDbInput
 
    ::nRow := nRow
    ::nCol := nCol
@@ -126,15 +133,14 @@ METHOD display() CLASS HBDbInput
    ELSEIF ::nPos - ::nFirst >= ::nWidth
       ::nFirst := ::nPos - ::nWidth + 1
    ENDIF
-   hb_DispOutAt( ::nRow, ::nCol, SubStr( ::cValue, ::nFirst, ::nWidth ), ;
-                 ::acColor[ 2 ] )
+   hb_DispOutAt( ::nRow, ::nCol, SubStr( ::cValue, ::nFirst, ::nWidth ), ::acColor[ 2 ] )
 
    RETURN Self
 
 METHOD showCursor() CLASS HBDbInput
 
    SetPos( ::nRow, ::nCol + ::nPos - ::nFirst )
-   SetCursor( iif( Set( _SET_INSERT ), SC_INSERT, SC_NORMAL ) )
+   SetCursor( iif( ::lInsert, SC_INSERT, SC_NORMAL ) )
 
    RETURN Self
 
@@ -145,44 +151,56 @@ METHOD applyKey( nKey ) CLASS HBDbInput
    SWITCH nKey
    CASE K_HOME
       ::nPos := 1
+      ::lFirst := .F.
       EXIT
    CASE K_END
+      ::lFirst := .F.
       ::nPos := Len( RTrim( ::cValue ) ) + 1
       IF ::nPos > ::nSize
          ::nPos := ::nSize
       ENDIF
       EXIT
    CASE K_LEFT
+      ::lFirst := .F.
       IF ::nPos > 1
          ::nPos--
       ENDIF
       EXIT
    CASE K_RIGHT
+      ::lFirst := .F.
       IF ::nPos < ::nSize
          ::nPos++
       ENDIF
       EXIT
    CASE K_DEL
+      ::lFirst := .F.
       ::cValue := Stuff( ::cValue, ::nPos, 1, "" ) + " "
       EXIT
    CASE K_BS
+      ::lFirst := .F.
       IF ::nPos > 1
          ::cValue := Stuff( ::cValue, --::nPos, 1, "" ) + " "
       ENDIF
       EXIT
    CASE K_CTRL_Y
    CASE K_CTRL_DEL
+      ::lFirst := .F.
       ::cValue := Space( ::nSize )
       ::nPos := 1
       EXIT
    CASE K_INS
-      Set( _SET_INSERT, ! Set( _SET_INSERT ) )
+      ::lInsert := ! ::lInsert
       EXIT
    OTHERWISE
       IF hb_keyChar( nKey ) == ""
          lUpdate := .F.
       ELSE
-         IF Set( _SET_INSERT )
+         IF ::lFirst
+            ::cValue := Space( ::nSize )
+            ::nPos := 1
+            ::lFirst := .F.
+         ENDIF
+         IF ::lInsert .And. ::nPos < ::nSize
             ::cValue := Left( Stuff( ::cValue, ::nPos, 0, hb_keyChar( nKey ) ), ::nSize )
          ELSE
             ::cValue := Stuff( ::cValue, ::nPos, 1, hb_keyChar( nKey ) )

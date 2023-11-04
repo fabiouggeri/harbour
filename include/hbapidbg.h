@@ -83,6 +83,9 @@ extern HB_EXPORT void hb_dbgSetToCursor( void * handle, const char * szModule, i
 extern HB_EXPORT void hb_dbgSetTrace( void * handle );
 extern HB_EXPORT void hb_dbgSetWatch( void * handle, int nWatch, const char * szExpr, HB_BOOL bTrace );
 
+extern HB_EXPORT void hb_dbg_SetDebuggerLevel( int level ); 
+extern HB_EXPORT int hb_dbg_GetDebuggerLevel( void ); 
+
 HB_EXTERN_END
 
 #endif /* HB_APIDBG_H_ */

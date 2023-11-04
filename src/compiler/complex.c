@@ -1352,12 +1352,12 @@ int hb_comp_yylex( YYSTYPE * yylval_ptr, HB_COMP_DECL )
                break;
 
             case IN:
-               if( pLex->iState == IDENTIFIER )
-               {
+               //if( pLex->iState == IDENTIFIER )
+               //{
                   pLex->iState = iType;
                   return iType;
-               }
-               break;
+               //}
+               //break;
 
             case NIL:
                if( pLex->iState == DECLARE_TYPE )

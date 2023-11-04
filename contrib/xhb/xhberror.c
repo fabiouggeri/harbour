@@ -353,7 +353,7 @@ static void xhb_errRedefineClass( void * cargo )
 }
 
 HB_CALL_ON_STARTUP_BEGIN( _xhb_error_init_ )
-   hb_dynsymNew( &s_symErrorNew );
+   hb_dynsymNew( &s_symErrorNew, HB_FALSE );
    hb_vmAtInit( xhb_errRedefineClass, NULL );
 HB_CALL_ON_STARTUP_END( _xhb_error_init_ )
 

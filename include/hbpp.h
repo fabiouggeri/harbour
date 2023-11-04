@@ -440,11 +440,11 @@ HB_PP_TOKEN, * PHB_PP_TOKEN;
 /* For platforms which does not use ASCII based character tables this macros
    have to be changed to use valid C functions, f.e.:
       isalpha(), isdigit(), ... */
-#ifdef HB_CLP_STRICT
-#  define HB_PP_ISILLEGAL(c)     ( (c) < 32 || (c) >= 126 )
-#else
-#  define HB_PP_ISILLEGAL(c)     ( (c) < 32 || (c) == 127 )
-#endif
+//#ifdef HB_CLP_STRICT
+#define HB_PP_ISILLEGAL(c)     ( (c) < 32 || (c) >= 126 )
+//#else
+//#  define HB_PP_ISILLEGAL(c)     ( (c) < 32 || (c) == 127 )
+//#endif
 #define HB_PP_ISTEXTCHAR(c)      ( (unsigned char) (c) >= 128 )
 #define HB_PP_ISBLANK(c)         ( (c) == ' ' || (c) == '\t' )
 #define HB_PP_ISDIGIT(c)         HB_ISDIGIT( c )

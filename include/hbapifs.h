@@ -266,6 +266,15 @@ typedef struct _HB_PATHNAMES
    HB_BOOL fFree;
 } HB_PATHNAMES;
 
+typedef struct _HB_PATH_FIX {
+   PHB_ITEM              pOriginalSource;
+   PHB_ITEM              pSource;
+   PHB_ITEM              pOriginalTarget;
+   PHB_ITEM              pTarget;
+   HB_BOOL               bIgnoreCase;
+   struct _HB_PATH_FIX * next;
+} HB_PATH_FIX;
+
 extern HB_EXPORT void       hb_fsAddSearchPath( const char * szPath, HB_PATHNAMES ** pSearchList );
 extern HB_EXPORT void       hb_fsFreeSearchPath( HB_PATHNAMES * pSearchList );
 
@@ -301,6 +310,7 @@ typedef struct
 extern HB_EXPORT PHB_FFIND hb_fsFindFirst( const char * pszFileMask, HB_FATTR attrmask );
 extern HB_EXPORT HB_BOOL   hb_fsFindNext( PHB_FFIND ffind );
 extern HB_EXPORT void      hb_fsFindClose( PHB_FFIND ffind );
+extern HB_EXPORT char *    hb_fsFindInsensitiveCaseFilePath(char *pszFileName, char *pathBuffer);
 
 /* functions to create, wait and terminate processes */
 extern HB_EXPORT HB_FHANDLE hb_fsProcessOpen( const char * pszFileName,
@@ -346,6 +356,11 @@ extern HB_EXPORT HB_BOOL  hb_fsOS2QueryPathInfo( const char * pszPathName,
                                                  HB_FOFFSET * pnSize, HB_FATTR * pnAttr,
                                                  long * plJulian, long * plMillisec );
 #endif
+
+extern HB_EXPORT PHB_ITEM hb_fsFindPathFix(HB_PATH_FIX *pFirstFix, PHB_ITEM pPath);
+extern HB_EXPORT void hb_fsSetPathFix(HB_PATH_FIX **pFirstFix, PHB_ITEM pSrcPath, PHB_ITEM pDstPath, HB_BOOL bIgnoreCase);
+extern HB_EXPORT void hb_fsCleanPathFixes(HB_PATH_FIX **pFirstFix);
+
 
 /* Harbour file functions with shared file handles and locks
  * (buffers in the future)

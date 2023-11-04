@@ -61,7 +61,6 @@ CREATE CLASS HBMemoEditor INHERIT HBEditor
    METHOD MemoInit( xUserFunction )          // This method is called after ::New() returns to perform ME_INIT actions
    METHOD Edit()                             // Calls ::super:Edit( nKey ) but is needed to handle configurable keys
    METHOD KeyboardHook( nKey )               // Gets called every time there is a key not handled directly by HBEditor
-   METHOD IdleHook()                         // Gets called every time there are no more keys to handle
 
    METHOD HandleUserKey( nKey, nUdfReturn )  // Handles keys returned to MemoEdit() by user function
    METHOD xDo( nStatus )                     // Calls xUserFunction saving and restoring cursor position and shape
@@ -111,39 +110,33 @@ METHOD MemoInit( xUserFunction ) CLASS HBMemoEditor
 
 METHOD Edit() CLASS HBMemoEditor
 
-   LOCAL nKey, nKeyStd
-
-   // NOTE: K_ALT_W is not compatible with Cl*pper exit memo and save key, but I cannot discriminate
-   //       K_CTRL_W and K_CTRL_END from Harbour code.
-   LOCAL hConfigurableKeys := { K_CTRL_Y =>, K_CTRL_T =>, K_CTRL_B =>, ;
-                                K_CTRL_V =>, K_ALT_W =>, K_ESC => }
+   LOCAL nKey
+   LOCAL aControlKeys := { K_UP, K_DOWN, K_LEFT, K_RIGHT, K_CTRL_LEFT, K_CTRL_RIGHT, K_HOME, K_END, K_CTRL_HOME, K_CTRL_END, K_PGUP, K_PGDN, K_CTRL_PGUP, K_CTRL_PGDN, K_RETURN, K_DEL, K_BS, K_TAB }
    LOCAL bKeyBlock
 
    // If I have an user function I need to trap configurable keys and ask to
    // user function if handle them the standard way or not
-   IF ::lEditAllow .AND. ::UserFunctionIsValid()
+   IF ::UserFunctionIsValid()
+
+      If NextKey() == 0
+         ::xDo( ME_IDLE )
+      EndIf
 
       DO WHILE ! ::lExitEdit
 
-         // I need to test this condition here since I never block inside HBEditor:Edit()
-         // if there is an user function
-         IF ( nKey := Inkey(, hb_bitOr( Set( _SET_EVENTMASK ), HB_INKEY_EXT ) ) ) == 0
-            ::IdleHook()
-            nKey := Inkey( 0, hb_bitOr( Set( _SET_EVENTMASK ), HB_INKEY_EXT ) )
-         ENDIF
-         nKeyStd := hb_keyStd( nKey )
+         nKey := Inkey( 0 )
 
-         IF ( bKeyBlock := SetKey( nKeyStd ) ) != NIL
-            Eval( bKeyBlock )
-            LOOP
-         ENDIF
-
-         // Is it a configurable key?
-         IF nKeyStd $ hConfigurableKeys
-            ::HandleUserKey( nKey, ::xDo( iif( ::lDirty, ME_UNKEYX, ME_UNKEY ) ) )
-         ELSE
+         If ( bKeyBlock := Setkey( nKey ) ) <> NIL
+            Eval( bKeyBlock, ::ProcName, ::ProcLine, ReadVar() )
+            Loop
+         ElseIf ( nKey >= K_SPACE .And. nKey < 256 ) .Or. AScan( aControlKeys, { | nItem | nItem == nKey } ) > 0
             ::super:Edit( nKey )
-         ENDIF
+            ::xDo( ME_IDLE )
+         Else
+            ::HandleUserKey( nKey, ::xDo( iif( ::lDirty, ME_UNKEYX, ME_UNKEY ) ) )       // Optionally delete nHandleKey content if NOT used, Ath 2004-05-25
+
+         EndIf
+         
       ENDDO
    ELSE
       // If I can't edit text buffer or there is not a user function enter standard HBEditor
@@ -192,14 +185,6 @@ METHOD KeyboardHook( nKey ) CLASS HBMemoEditor
          ::lSaved := .F.
          ::lExitEdit := .T.
       ENDIF
-   ENDIF
-
-   RETURN Self
-
-METHOD IdleHook() CLASS HBMemoEditor
-
-   IF ::UserFunctionIsValid()
-      ::xDo( ME_IDLE )
    ENDIF
 
    RETURN Self

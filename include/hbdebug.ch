@@ -67,7 +67,8 @@
 #define HB_DBG_CS_LEVEL       4  /* eval stack level of the function */
 #define HB_DBG_CS_LOCALS      5  /* an array with local variables */
 #define HB_DBG_CS_STATICS     6  /* an array with static variables */
-#define HB_DBG_CS_LEN         6
+#define HB_DBG_CS_CODEBLOCK   7  /* Debugging codeblock */
+#define HB_DBG_CS_LEN         7
 
 /* Information structure stored in aModules */
 #define HB_DBG_MOD_NAME       1  /* module name */

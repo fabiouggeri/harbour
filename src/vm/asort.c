@@ -136,7 +136,7 @@ static HB_BOOL hb_itemIsLess( PHB_BASEARRAY pBaseArray, PHB_ITEM pBlock,
    }
 }
 
-#ifdef HB_CLP_STRICT
+// #ifdef HB_CLP_STRICT
 
 /* partition array pItems[lb..ub] */
 
@@ -215,110 +215,110 @@ static void hb_arraySortStart( PHB_BASEARRAY pBaseArray, PHB_ITEM pBlock,
    hb_arraySortQuick( pBaseArray, nStart, nStart + nCount - 1, pBlock );
 }
 
-#else
-
-static HB_BOOL hb_arraySortDO( PHB_BASEARRAY pBaseArray, PHB_ITEM pBlock,
-                               HB_SIZE * pSrc, HB_SIZE * pBuf, HB_SIZE nCount )
-{
-   if( nCount > 1 )
-   {
-      HB_SIZE nCnt1, nCnt2, * pPtr1, * pPtr2, * pDst;
-      HB_BOOL fBuf1, fBuf2;
-
-      nCnt1 = nCount >> 1;
-      nCnt2 = nCount - nCnt1;
-      pPtr1 = &pSrc[ 0 ];
-      pPtr2 = &pSrc[ nCnt1 ];
-
-      fBuf1 = hb_arraySortDO( pBaseArray, pBlock, pPtr1, &pBuf[ 0 ], nCnt1 );
-      fBuf2 = hb_arraySortDO( pBaseArray, pBlock, pPtr2, &pBuf[ nCnt1 ], nCnt2 );
-      if( fBuf1 )
-         pDst = pBuf;
-      else
-      {
-         pDst = pSrc;
-         pPtr1 = &pBuf[ 0 ];
-      }
-      if( ! fBuf2 )
-         pPtr2 = &pBuf[ nCnt1 ];
-
-      while( nCnt1 > 0 && nCnt2 > 0 )
-      {
-         if( hb_itemIsLess( pBaseArray, pBlock, *pPtr2, *pPtr1 ) )
-         {
-            *pDst++ = *pPtr2++;
-            nCnt2--;
-         }
-         else
-         {
-            *pDst++ = *pPtr1++;
-            nCnt1--;
-         }
-      }
-      if( nCnt1 > 0 )
-      {
-         do
-            *pDst++ = *pPtr1++;
-         while( --nCnt1 );
-      }
-      else if( nCnt2 > 0 && fBuf1 == fBuf2 )
-      {
-         do
-            *pDst++ = *pPtr2++;
-         while( --nCnt2 );
-      }
-      return ! fBuf1;
-   }
-   return HB_TRUE;
-}
-
-static void hb_arraySortStart( PHB_BASEARRAY pBaseArray, PHB_ITEM pBlock,
-                               HB_SIZE nStart, HB_SIZE nCount )
-{
-   HB_SIZE * pBuffer, * pDest, * pPos, nPos, nTo;
-
-   pBuffer = ( HB_SIZE * ) hb_xgrab( sizeof( HB_SIZE ) * 2 * nCount );
-   for( nPos = 0; nPos < nCount; ++nPos )
-      pBuffer[ nPos ] = nStart + nPos;
-
-   if( hb_arraySortDO( pBaseArray, pBlock, pBuffer, &pBuffer[ nCount ], nCount ) )
-      pPos = ( pDest = pBuffer ) + nCount;
-   else
-      pDest = ( pPos = pBuffer ) + nCount;
-
-   /* protection against array resizing by user codeblock */
-   if( nStart + nCount > pBaseArray->nLen )
-   {
-      if( pBaseArray->nLen > nStart )
-      {
-         for( nPos = nTo = 0; nPos < nCount; ++nPos )
-         {
-            if( pDest[ nPos ] < pBaseArray->nLen )
-               pDest[ nTo++ ] = pDest[ nPos ];
-         }
-         nCount = nTo;
-      }
-      else
-         nCount = 0;
-   }
-
-   for( nPos = 0; nPos < nCount; ++nPos )
-      pPos[ pDest[ nPos ] - nStart ] = nPos;
-
-   for( nPos = 0; nPos < nCount; ++nPos )
-   {
-      if( nPos + nStart != pDest[ nPos ] )
-      {
-         hb_itemRawSwap( pBaseArray->pItems + nPos + nStart,
-                         pBaseArray->pItems + pDest[ nPos ] );
-         pDest[ pPos[ nPos ] ] = pDest[ nPos ];
-         pPos[ pDest[ nPos ] - nStart ] = pPos[ nPos ];
-      }
-   }
-
-   hb_xfree( pBuffer );
-}
-#endif /* HB_CLP_STRICT */
+//#else
+//
+//static HB_BOOL hb_arraySortDO( PHB_BASEARRAY pBaseArray, PHB_ITEM pBlock,
+//                               HB_SIZE * pSrc, HB_SIZE * pBuf, HB_SIZE nCount )
+//{
+//   if( nCount > 1 )
+//   {
+//      HB_SIZE nCnt1, nCnt2, * pPtr1, * pPtr2, * pDst;
+//      HB_BOOL fBuf1, fBuf2;
+//
+//      nCnt1 = nCount >> 1;
+//      nCnt2 = nCount - nCnt1;
+//      pPtr1 = &pSrc[ 0 ];
+//      pPtr2 = &pSrc[ nCnt1 ];
+//
+//      fBuf1 = hb_arraySortDO( pBaseArray, pBlock, pPtr1, &pBuf[ 0 ], nCnt1 );
+//      fBuf2 = hb_arraySortDO( pBaseArray, pBlock, pPtr2, &pBuf[ nCnt1 ], nCnt2 );
+//      if( fBuf1 )
+//         pDst = pBuf;
+//      else
+//      {
+//         pDst = pSrc;
+//         pPtr1 = &pBuf[ 0 ];
+//      }
+//      if( ! fBuf2 )
+//         pPtr2 = &pBuf[ nCnt1 ];
+//
+//      while( nCnt1 > 0 && nCnt2 > 0 )
+//      {
+//         if( hb_itemIsLess( pBaseArray, pBlock, *pPtr2, *pPtr1 ) )
+//         {
+//            *pDst++ = *pPtr2++;
+//            nCnt2--;
+//         }
+//         else
+//         {
+//            *pDst++ = *pPtr1++;
+//            nCnt1--;
+//         }
+//      }
+//      if( nCnt1 > 0 )
+//      {
+//         do
+//            *pDst++ = *pPtr1++;
+//         while( --nCnt1 );
+//      }
+//      else if( nCnt2 > 0 && fBuf1 == fBuf2 )
+//      {
+//         do
+//            *pDst++ = *pPtr2++;
+//         while( --nCnt2 );
+//      }
+//      return ! fBuf1;
+//   }
+//   return HB_TRUE;
+//}
+//
+//static void hb_arraySortStart( PHB_BASEARRAY pBaseArray, PHB_ITEM pBlock,
+//                               HB_SIZE nStart, HB_SIZE nCount )
+//{
+//   HB_SIZE * pBuffer, * pDest, * pPos, nPos, nTo;
+//
+//   pBuffer = ( HB_SIZE * ) hb_xgrab( sizeof( HB_SIZE ) * 2 * nCount );
+//   for( nPos = 0; nPos < nCount; ++nPos )
+//      pBuffer[ nPos ] = nStart + nPos;
+//
+//   if( hb_arraySortDO( pBaseArray, pBlock, pBuffer, &pBuffer[ nCount ], nCount ) )
+//      pPos = ( pDest = pBuffer ) + nCount;
+//   else
+//      pDest = ( pPos = pBuffer ) + nCount;
+//
+//   /* protection against array resizing by user codeblock */
+//   if( nStart + nCount > pBaseArray->nLen )
+//   {
+//      if( pBaseArray->nLen > nStart )
+//      {
+//         for( nPos = nTo = 0; nPos < nCount; ++nPos )
+//         {
+//            if( pDest[ nPos ] < pBaseArray->nLen )
+//               pDest[ nTo++ ] = pDest[ nPos ];
+//         }
+//         nCount = nTo;
+//      }
+//      else
+//         nCount = 0;
+//   }
+//
+//   for( nPos = 0; nPos < nCount; ++nPos )
+//      pPos[ pDest[ nPos ] - nStart ] = nPos;
+//
+//   for( nPos = 0; nPos < nCount; ++nPos )
+//   {
+//      if( nPos + nStart != pDest[ nPos ] )
+//      {
+//         hb_itemRawSwap( pBaseArray->pItems + nPos + nStart,
+//                         pBaseArray->pItems + pDest[ nPos ] );
+//         pDest[ pPos[ nPos ] ] = pDest[ nPos ];
+//         pPos[ pDest[ nPos ] - nStart ] = pPos[ nPos ];
+//      }
+//   }
+//
+//   hb_xfree( pBuffer );
+//}
+//#endif /* HB_CLP_STRICT */
 
 HB_BOOL hb_arraySort( PHB_ITEM pArray, HB_SIZE * pnStart, HB_SIZE * pnCount, PHB_ITEM pBlock )
 {

@@ -57,6 +57,7 @@
 #include "hbvm.h"
 #include "hbdate.h"
 #include "hb_io.h"
+#include "hbset.h"
 
 /* --- */
 
@@ -159,6 +160,7 @@
    #include <fcntl.h>
    #include <dirent.h>
    #include <time.h>
+   #include <errno.h>
 
    typedef struct
    {
@@ -443,19 +445,19 @@ static HB_BOOL hb_fsFindNextLow( PHB_FFIND ffind )
          tzset();
          #endif
 
-#if defined( __WATCOMC__ )
-         bFound = ( _dos_findfirst( ffind->pszFileMask, ( HB_USHORT ) hb_fsAttrToRaw( ffind->attrmask ), &info->entry ) == 0 );
-#else
-         bFound = ( findfirst( ffind->pszFileMask, &info->entry, ( HB_USHORT ) hb_fsAttrToRaw( ffind->attrmask ) ) == 0 );
-#endif
+   #if defined( __WATCOMC__ )
+            bFound = ( _dos_findfirst( ffind->pszFileMask, ( HB_USHORT ) hb_fsAttrToRaw( ffind->attrmask ), &info->entry ) == 0 );
+   #else
+            bFound = ( findfirst( ffind->pszFileMask, &info->entry, ( HB_USHORT ) hb_fsAttrToRaw( ffind->attrmask ) ) == 0 );
+   #endif
       }
       else
       {
-#if defined( __WATCOMC__ )
-         bFound = ( _dos_findnext( &info->entry ) == 0 );
-#else
-         bFound = ( findnext( &info->entry ) == 0 );
-#endif
+   #if defined( __WATCOMC__ )
+            bFound = ( _dos_findnext( &info->entry ) == 0 );
+   #else
+            bFound = ( findnext( &info->entry ) == 0 );
+   #endif
       }
 
       /* Fill Harbour found file info */
@@ -610,44 +612,44 @@ static HB_BOOL hb_fsFindNextLow( PHB_FFIND ffind )
 
       bFound = HB_FALSE;
 
-#if ! defined( HB_OS_WIN_CE )
-      if( ( ffind->attrmask & HB_FA_LABEL ) != 0 && ! info->fLabelDone )
-      {
-         TCHAR lpVolName[ HB_PATH_MAX ];
-         LPTSTR lpFileMask = NULL;
-         char * mask = NULL;
-
-         info->fLabelDone = HB_TRUE;
-
-         if( ffind->pszFileMask && *ffind->pszFileMask )
+   #if ! defined( HB_OS_WIN_CE )
+         if( ( ffind->attrmask & HB_FA_LABEL ) != 0 && ! info->fLabelDone )
          {
-            PHB_FNAME pFileName = hb_fsFNameSplit( ffind->pszFileMask );
-            if( pFileName->szName && pFileName->szName[ 0 ] )
-               mask = hb_strdup( pFileName->szName );
-            if( pFileName->szPath && pFileName->szPath[ 0 ] &&
-                ( pFileName->szPath[ 1 ] ||
-                  pFileName->szPath[ 0 ] != HB_OS_PATH_DELIM_CHR ) )
-               lpFileMask = HB_CHARDUP( pFileName->szPath );
-            hb_xfree( pFileName );
-         }
-         bFound = GetVolumeInformation( lpFileMask, lpVolName,
-                                        HB_SIZEOFARRAY( lpVolName ),
-                                        NULL, NULL, NULL, NULL, 0 ) != 0;
-         if( bFound )
-         {
-            HB_OSSTRDUP2( lpVolName, ffind->szName, sizeof( ffind->szName ) - 1 );
-            if( mask && *mask && ! hb_strMatchFile( ffind->szName, mask ) )
+            TCHAR lpVolName[ HB_PATH_MAX ];
+            LPTSTR lpFileMask = NULL;
+            char * mask = NULL;
+   
+            info->fLabelDone = HB_TRUE;
+   
+            if( ffind->pszFileMask && *ffind->pszFileMask )
             {
-               ffind->szName[ 0 ] = '\0';
-               bFound = HB_FALSE;
+               PHB_FNAME pFileName = hb_fsFNameSplit( ffind->pszFileMask );
+               if( pFileName->szName && pFileName->szName[ 0 ] )
+                  mask = hb_strdup( pFileName->szName );
+               if( pFileName->szPath && pFileName->szPath[ 0 ] &&
+                   ( pFileName->szPath[ 1 ] ||
+                     pFileName->szPath[ 0 ] != HB_OS_PATH_DELIM_CHR ) )
+                  lpFileMask = HB_CHARDUP( pFileName->szPath );
+               hb_xfree( pFileName );
             }
+            bFound = GetVolumeInformation( lpFileMask, lpVolName,
+                                           HB_SIZEOFARRAY( lpVolName ),
+                                           NULL, NULL, NULL, NULL, 0 ) != 0;
+            if( bFound )
+            {
+               HB_OSSTRDUP2( lpVolName, ffind->szName, sizeof( ffind->szName ) - 1 );
+               if( mask && *mask && ! hb_strMatchFile( ffind->szName, mask ) )
+               {
+                  ffind->szName[ 0 ] = '\0';
+                  bFound = HB_FALSE;
+               }
+            }
+            if( lpFileMask )
+               hb_xfree( lpFileMask );
+            if( mask )
+               hb_xfree( mask );
          }
-         if( lpFileMask )
-            hb_xfree( lpFileMask );
-         if( mask )
-            hb_xfree( mask );
-      }
-#endif
+   #endif
 
       if( ! bFound &&
           ( ffind->attrmask & ( HB_FA_LABEL | HB_FA_HIDDEN | HB_FA_SYSTEM |
@@ -687,15 +689,15 @@ static HB_BOOL hb_fsFindNextLow( PHB_FFIND ffind )
                ffind->size = 0;
             else
             {
-#if defined( __XCC__ ) || ( defined( __POCC__ ) && __POCC__ >= 500 )
-               /* NOTE: Pelles C 5.00.1 will go into an infinite loop if we don't
-                        split this into two operations. [vszakats] */
-               ffind->size  = ( HB_FOFFSET ) info->pFindFileData.nFileSizeLow;
-               ffind->size += ( HB_FOFFSET ) info->pFindFileData.nFileSizeHigh << 32;
-#else
-               ffind->size = ( HB_FOFFSET ) info->pFindFileData.nFileSizeLow +
-                           ( ( HB_FOFFSET ) info->pFindFileData.nFileSizeHigh << 32 );
-#endif
+   #if defined( __XCC__ ) || ( defined( __POCC__ ) && __POCC__ >= 500 )
+                  /* NOTE: Pelles C 5.00.1 will go into an infinite loop if we don't
+                           split this into two operations. [vszakats] */
+                  ffind->size  = ( HB_FOFFSET ) info->pFindFileData.nFileSizeLow;
+                  ffind->size += ( HB_FOFFSET ) info->pFindFileData.nFileSizeHigh << 32;
+   #else
+                  ffind->size = ( HB_FOFFSET ) info->pFindFileData.nFileSizeLow +
+                              ( ( HB_FOFFSET ) info->pFindFileData.nFileSizeHigh << 32 );
+   #endif
             }
 
             raw_attr = ( HB_FATTR ) info->pFindFileData.dwFileAttributes;
@@ -763,6 +765,15 @@ static HB_BOOL hb_fsFindNextLow( PHB_FFIND ffind )
          #endif
 
          info->dir = opendir( dirname );
+         if (info->dir == NULL && errno == ENOENT && hb_setGetRetryFileCase()) 
+         {
+            char pathBuffer[HB_PATH_MAX];
+            char *pathFound = hb_fsFindInsensitiveCaseFilePath(dirname, pathBuffer);
+            if (pathFound) 
+            {
+               info->dir = opendir( pathFound );
+            }
+         }
          hb_strncpy( info->path, dirname, sizeof( info->path ) - 1 );
       }
 
@@ -786,27 +797,27 @@ static HB_BOOL hb_fsFindNextLow( PHB_FFIND ffind )
          {
             time_t ftime;
             struct tm lt;
-#if defined( HB_USE_LARGEFILE64 )
-            struct stat64 sStat, sStatL;
-            if( lstat64( dirname, &sStat ) == 0 )
-            {
-               if( S_ISLNK( sStat.st_mode ) && ( ffind->attrmask & HB_FA_LINK ) == 0 )
+   #if defined( HB_USE_LARGEFILE64 )
+               struct stat64 sStat, sStatL;
+               if( lstat64( dirname, &sStat ) == 0 )
                {
-                  if( stat64( dirname, &sStatL ) == 0 )
-                     memcpy( &sStat, &sStatL, sizeof( sStat ) );
-                  nAttr |= HB_FA_LINK;
-               }
-#else
-            struct stat sStat, sStatL;
-            if( lstat( dirname, &sStat ) == 0 )
-            {
-               if( S_ISLNK( sStat.st_mode ) && ( ffind->attrmask & HB_FA_LINK ) == 0 )
+                  if( S_ISLNK( sStat.st_mode ) && ( ffind->attrmask & HB_FA_LINK ) == 0 )
+                  {
+                     if( stat64( dirname, &sStatL ) == 0 )
+                        memcpy( &sStat, &sStatL, sizeof( sStat ) );
+                     nAttr |= HB_FA_LINK;
+                  }
+   #else
+               struct stat sStat, sStatL;
+               if( lstat( dirname, &sStat ) == 0 )
                {
-                  if( stat( dirname, &sStatL ) == 0 )
-                     memcpy( &sStat, &sStatL, sizeof( sStat ) );
-                  nAttr |= HB_FA_LINK;
-               }
-#endif
+                  if( S_ISLNK( sStat.st_mode ) && ( ffind->attrmask & HB_FA_LINK ) == 0 )
+                  {
+                     if( stat( dirname, &sStatL ) == 0 )
+                        memcpy( &sStat, &sStatL, sizeof( sStat ) );
+                     nAttr |= HB_FA_LINK;
+                  }
+   #endif
                if( info->entry->d_name[ 0 ] == '.' )
                {
                   if( info->entry->d_name[ 1 ] &&
@@ -819,11 +830,11 @@ static HB_BOOL hb_fsFindNextLow( PHB_FFIND ffind )
                raw_attr = sStat.st_mode;
 
                ftime = sStat.st_mtime;
-#  if defined( HB_HAS_LOCALTIME_R )
+   #if defined( HB_HAS_LOCALTIME_R )
                localtime_r( &ftime, &lt );
-#  else
+   #else
                lt = *localtime( &ftime );
-#  endif
+   #endif
 
                iYear  = lt.tm_year + 1900;
                iMonth = lt.tm_mon + 1;
@@ -833,18 +844,18 @@ static HB_BOOL hb_fsFindNextLow( PHB_FFIND ffind )
                iMin  = lt.tm_min;
                iSec  = lt.tm_sec;
 
-#  if defined( HB_OS_LINUX ) && \
-      defined( __GLIBC__ ) && defined( __GLIBC_MINOR__ ) && \
-      ( __GLIBC__ > 2 || ( __GLIBC__ == 2 && __GLIBC_MINOR__ >= 6 ) )
-#     if defined( _BSD_SOURCE ) || defined( _SVID_SOURCE ) || \
-         ( __GLIBC_MINOR__ >= 12 && \
-           ( ( defined( _POSIX_C_SOURCE ) || _POSIX_C_SOURCE >= 200809L ) || \
-             ( defined( _XOPEN_SOURCE ) || _XOPEN_SOURCE >= 700 ) ) )
-               iMSec = sStat.st_mtim.tv_nsec / 1000000;
-#     else
-               iMSec = sStat.st_mtimensec / 1000000;
-#     endif
-#  endif
+   #if defined( HB_OS_LINUX ) && \
+       defined( __GLIBC__ ) && defined( __GLIBC_MINOR__ ) && \
+       ( __GLIBC__ > 2 || ( __GLIBC__ == 2 && __GLIBC_MINOR__ >= 6 ) )
+      #if defined( _BSD_SOURCE ) || defined( _SVID_SOURCE ) || \
+          ( __GLIBC_MINOR__ >= 12 && \
+            ( ( defined( _POSIX_C_SOURCE ) || _POSIX_C_SOURCE >= 200809L ) || \
+              ( defined( _XOPEN_SOURCE ) || _XOPEN_SOURCE >= 700 ) ) )
+                iMSec = sStat.st_mtim.tv_nsec / 1000000;
+      #else
+                iMSec = sStat.st_mtimensec / 1000000;
+      #endif
+   #endif
             }
             else
                bFound = HB_FALSE;

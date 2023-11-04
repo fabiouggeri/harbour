@@ -600,9 +600,27 @@ HB_BOOL hb_fsNameExists( const char * pszFileName )
 #     if defined( HB_USE_LARGEFILE64 )
          struct stat64 statbuf;
          fExist = stat64( pszFileName, &statbuf ) == 0;
+         if (! fExist && hb_setGetRetryFileCase()) 
+         {
+            char pathBuffer[HB_PATH_MAX];
+            char *pathFound = hb_fsFindInsensitiveCaseFilePath(pszFileName, pathBuffer);
+            if (pathFound) 
+            {
+               fExist = stat64( pathFound, &statbuf ) == 0;
+            }
+         }
 #     else
          struct stat statbuf;
          fExist = stat( pszFileName, &statbuf ) == 0;
+         if (! fExist && hb_setGetRetryFileCase()) 
+         {
+            char pathBuffer[HB_PATH_MAX];
+            char *pathFound = hb_fsFindInsensitiveCaseFilePath(pszFileName, pathBuffer);
+            if (pathFound) 
+            {
+               fExist = stat( pathFound, &statbuf ) == 0;
+            }
+         }
 #     endif
 #  else
          int iTODO; /* To force warning */
@@ -661,10 +679,30 @@ HB_BOOL hb_fsFileExists( const char * pszFileName )
          struct stat64 statbuf;
          fExist = stat64( pszFileName, &statbuf ) == 0 &&
                   S_ISREG( statbuf.st_mode );
+         if (! fExist && hb_setGetRetryFileCase()) 
+         {
+            char pathBuffer[HB_PATH_MAX];
+            char *pathFound = hb_fsFindInsensitiveCaseFilePath(pszFileName, pathBuffer);
+            if (pathFound) 
+            {
+               fExist = stat64( pathFound, &statbuf ) == 0 &&
+                        S_ISREG( statbuf.st_mode );
+            }
+         }
 #     else
          struct stat statbuf;
          fExist = stat( pszFileName, &statbuf ) == 0 &&
                   S_ISREG( statbuf.st_mode );
+         if (! fExist && hb_setGetRetryFileCase()) 
+         {
+            char pathBuffer[HB_PATH_MAX];
+            char *pathFound = hb_fsFindInsensitiveCaseFilePath(pszFileName, pathBuffer);
+            if (pathFound) 
+            {
+               fExist = stat( pathFound, &statbuf ) == 0 &&
+                        S_ISREG( statbuf.st_mode );
+            }
+         }
 #     endif
 #  else
          int iTODO; /* To force warning */
@@ -722,10 +760,30 @@ HB_BOOL hb_fsDirExists( const char * pszDirName )
          struct stat64 statbuf;
          fExist = stat64( pszDirName, &statbuf ) == 0 &&
                   S_ISDIR( statbuf.st_mode );
+         if (! fExist && hb_setGetRetryFileCase()) 
+         {
+            char pathBuffer[HB_PATH_MAX];
+            char *pathFound = hb_fsFindInsensitiveCaseFilePath(pszDirName, pathBuffer);
+            if (pathFound) 
+            {
+               fExist = stat64( pathFound, &statbuf ) == 0 &&
+                        S_ISDIR( statbuf.st_mode );
+            }
+         }
 #     else
          struct stat statbuf;
          fExist = stat( pszDirName, &statbuf ) == 0 &&
                   S_ISDIR( statbuf.st_mode );
+         if (! fExist && hb_setGetRetryFileCase()) 
+         {
+            char pathBuffer[HB_PATH_MAX];
+            char *pathFound = hb_fsFindInsensitiveCaseFilePath(pszDirName, pathBuffer);
+            if (pathFound) 
+            {
+               fExist = stat( pathFound, &statbuf ) == 0 &&
+                        S_ISDIR( statbuf.st_mode );
+            }
+         }
 #     endif
 #  else
          int iTODO; /* To force warning */

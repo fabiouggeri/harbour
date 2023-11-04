@@ -53,6 +53,10 @@
 #include "hbcomp.h"
 #include "hbmemory.ch"
 
+#if defined( HB_OS_UNIX )
+   #include <dirent.h>
+#endif
+
 /* --- FM statistic module --- */
 
 /* remove this 'undef' when number of memory leaks will be reduced to
@@ -501,10 +505,11 @@ void  hb_fsSetError( HB_ERRCODE uiError )
 
 /* file name conversion */
 
-static int     s_iFileCase = HB_SET_CASE_MIXED;
-static int     s_iDirCase  = HB_SET_CASE_MIXED;
-static HB_BOOL s_fFnTrim   = HB_FALSE;
-static char    s_cDirSep   = HB_OS_PATH_DELIM_CHR;
+static int     s_iFileCase      = HB_SET_CASE_MIXED;
+static int     s_iDirCase       = HB_SET_CASE_MIXED;
+static HB_BOOL s_fFnTrim        = HB_FALSE;
+static char    s_cDirSep        = HB_OS_PATH_DELIM_CHR;
+static HB_BOOL s_fRetryFileCase = HB_FALSE;
 
 const char * hb_fsNameConv( const char * szFileName, char ** pszFree )
 {
@@ -730,4 +735,105 @@ void hb_setSetDirSeparator( int iSeparator )
 void hb_setSetTrimFileName( HB_BOOL fTrim )
 {
    s_fFnTrim = fTrim;
+}
+
+char *hb_fsFindInsensitiveCaseFilePath(char *pszFileName, char *pathBuffer) 
+{
+#if defined( HB_OS_UNIX )
+   char *pathName;
+   size_t index = 0;
+   DIR *curDir;
+   HB_BOOL last = HB_FALSE;
+   char *subPath;
+   struct dirent *dirEntry;
+
+   if (pathBuffer) {
+      pathName = pathBuffer;
+   } else {
+      pathName = (char *) hb_xgrab(strlen(pszFileName) + 2);
+   }
+   
+   if (pathName == NULL) {
+      return NULL;
+   }
+
+   if (pszFileName[0] == '/') {
+      curDir = opendir("/");
+      pszFileName = pszFileName + 1;
+   } else {
+      curDir = opendir(".");
+      pathName[0] = '.';
+      pathName[1] = 0;
+      index = 1;
+   }
+
+   subPath = strsep(&pszFileName, "/");
+   while (subPath) {
+      if (!curDir) {
+         if (pathBuffer == NULL) {
+            hb_xfree(pathName);
+         }
+         return NULL;
+      }
+
+      if (last) {
+         closedir(curDir);
+         if (pathBuffer == NULL) {
+            hb_xfree(pathName);
+         }
+         return NULL;
+      }
+
+      pathName[index] = '/';
+      index++;
+      pathName[index] = 0;
+
+      dirEntry = readdir(curDir);
+      while (dirEntry) {
+         if (strcasecmp(subPath, dirEntry->d_name) == 0) {
+            strcpy(pathName + index, dirEntry->d_name);
+            index += strlen(dirEntry->d_name);
+            closedir(curDir);
+            curDir = opendir(pathName);
+            break;
+         }
+         dirEntry = readdir(curDir);
+      }
+
+      if (!dirEntry) {
+         strcpy(pathName + index, subPath);
+         index += strlen(subPath);
+         last = HB_TRUE;
+      }
+
+      subPath = strsep(&pszFileName, "/");
+   }
+
+   if (curDir) {
+      closedir(curDir);
+   }
+   return pathName;
+#else
+   return NULL;
+#endif
+}
+
+HB_BOOL hb_setGetRetryFileCase(void)
+{
+   return s_fRetryFileCase;
+}
+
+void hb_setSetRetryFileCase( HB_BOOL fRetry )
+{
+   s_fRetryFileCase = fRetry;
+}
+
+HB_PATH_FIX * hb_setGetFirstPathFix(void) 
+{
+   return NULL;
+}
+
+int hb_setGetDirReturnCase(void) 
+{
+   return 0;
 }

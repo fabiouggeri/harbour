@@ -60,6 +60,7 @@ void hb_compPrintUsage( HB_COMP_DECL, const char * szSelf )
       "\n          -fd[:[l|u]|-]    set directory casing (l=lower u=upper)",
       "\n          -fp[:<char>]     set path separator",
       "\n          -fs[-]           turn filename space trimming on or off (default)",
+      "\n          -fc[-]           turn retry find file in insensitive case on or off (default)",
       "\n          -g<type>         output type generated is <type> (see below)",
       "\n          -gc[<type>]      output type: C source (.c) (default)",
       "\n                           <type>: 0=compact (default) 1=normal 2=verbose",

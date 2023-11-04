@@ -59,18 +59,17 @@
 
 CREATE CLASS HBDbObject
 
-   VAR aWindows       INIT {}
+   VAR oWindow
    VAR Theobj
    VAR objname
-   VAR nCurWindow     INIT 0
    VAR pItems         INIT {}
    VAR ArrayIndex     INIT 1
    VAR lEditable
 
    METHOD New( oObject, cVarName, lEditable )
-   METHOD addWindows( nRow )
+   METHOD CreateWindow()
    METHOD doGet( oBrowse )
-   METHOD SetsKeyPressed( nKey, oBrwSets )
+   METHOD SetsKeyPressed( nKey, nSets )
 
 ENDCLASS
 
@@ -103,36 +102,25 @@ METHOD New( oObject, cVarName, lEditable ) CLASS HBDbObject
    ::TheObj := oObject
    ::lEditable := hb_defaultValue( lEditable, .T. )
 
-   ::addWindows()
+   ::createWindow()
 
    RETURN Self
 
-METHOD addWindows( nRow ) CLASS HBDbObject
+METHOD createWindow() CLASS HBDbObject
 
    LOCAL oBrwSets
    LOCAL nSize := Len( ::pItems )
-   LOCAL oWndSets
    LOCAL oCol
    LOCAL nMaxLen
 
    IF nSize < MaxRow() - 2
-      IF HB_ISNUMERIC( nRow )
-         oWndSets := HBDbWindow():New( nRow, 5, iif( nRow + nSize + 1 < MaxRow() - 2, nRow + nSize + 1, MaxRow() - 2 ), MaxCol() - 5, ;
-            ::objname + " is of class: " + ::TheObj:ClassName(), "N/W" )
-      ELSE
-         oWndSets := HBDbWindow():New( 1, 5, 2 + nSize, MaxCol() - 5, ;
-            ::objname + " is of class: " + ::TheObj:ClassName(), "N/W" )
-      ENDIF
+      ::oWindow := HBDbWindow():New( 1, 5, 2 + nSize, MaxCol() - 5, ::objname + " is of class: " + ::TheObj:ClassName(), "N/W" )
    ELSE
-      oWndSets := HBDbWindow():New( 1, 5, MaxRow() - 2, MaxCol() - 5, ;
-         ::objname + " is of class: " + ::TheObj:ClassName(), "N/W" )
+      ::oWindow := HBDbWindow():New( 1, 5, MaxRow() - 2, MaxCol() - 5, ::objname + " is of class: " + ::TheObj:ClassName(), "N/W" )
    ENDIF
 
-   ::nCurWindow++
-   oWndSets:lFocused := .T.
-   AAdd( ::aWindows, oWndSets )
-
-   oBrwSets := HBDbBrowser():New( oWndSets:nTop + 1, oWndSets:nLeft + 1, oWndSets:nBottom - 1, oWndSets:nRight - 1 )
+   oBrwSets := HBDbBrowser():New( ::oWindow:nTop + 1, ::oWindow:nLeft + 1, ::oWindow:nBottom - 1, ::oWindow:nRight - 1 )
+   ::oWindow:Browser := oBrwSets
 
    oBrwSets:ColorSpec := __dbg():ClrModal()
    oBrwSets:GoTopBlock := {|| ::Arrayindex := 1 }
@@ -143,38 +131,37 @@ METHOD addWindows( nRow ) CLASS HBDbObject
 
    nMaxLen := 0
    AEval( ::pItems, {| x | nMaxLen := Max( nMaxLen, Len( x[ OMSG_NAME ] ) ) } )
-   oBrwSets:AddColumn( oCol := HBDbColumnNew( "", {|| ::pItems[ ::arrayindex ][ OMSG_NAME ] } ) )
-   oCol:width := nMaxLen
+   oBrwSets:AddColumn( oCol := TBColumnNew( "", {|| PadR( ::pItems[ ::arrayindex, OMSG_NAME ], nMaxLen ) } ) )
    oCol:DefColor := { 1, 2 }
    oBrwSets:Freeze := 1
 
-   oBrwSets:AddColumn( oCol := HBDbColumnNew( "", {|| iif( ! ::pItems[ ::ArrayIndex ][ OMSG_EDIT ], ;
-      ::pItems[ ::ArrayIndex ][ OMSG_VALUE ], ;
-      __dbgValToExp( __dbgObjGetValue( ::TheObj, ::pItems[ ::arrayindex ][ OMSG_NAME ] ) ) ) } ) )
+   oBrwSets:AddColumn( oCol := TBColumnNew( "", {|| iif( ! ::pItems[ ::ArrayIndex, OMSG_EDIT ], ;
+                                                           ::pItems[ ::ArrayIndex, OMSG_VALUE ], ;
+                                                           __dbgValToExp( __dbgObjGetValue( ::TheObj, ::pItems[ ::arrayindex, OMSG_NAME ] ) ) ) } ) )
 
    oCol:DefColor := { 1, 3 }
-   oCol:width := oWndSets:nRight - oWndSets:nLeft - nMaxLen - 2
+   oCol:width := ::oWindow:nRight - ::oWindow:nLeft - nMaxLen - 2
    oBrwSets:colPos := 2
 
-   ::aWindows[ ::nCurWindow ]:bPainted    := {|| oBrwSets:ForceStable() }
-   ::aWindows[ ::nCurWindow ]:bKeyPressed := {| nKey | ::SetsKeyPressed( nKey, oBrwSets ) }
-   ::aWindows[ ::nCurwindow ]:cCaption := ::objname + " is of class: " + ::TheObj:ClassName()
+   ::oWindow:bPainted    := {|| ::oWindow:Browser:RefreshAll():ForceStable(), RefreshVarsS( ::oWindow:Browser ) }
+   ::oWindow:bKeyPressed := {| nKey | ::SetsKeyPressed( nKey, Len( ::pItems ) ) }
+   ::oWindow:cCaption := ::objname + " is of class: " + ::TheObj:ClassName()
 
-   ::aWindows[ ::nCurWindow ]:ShowModal()
+   ::oWindow:ShowModal()
 
    RETURN Self
 
 METHOD PROCEDURE doGet( oBrowse ) CLASS HBDbObject
-
    LOCAL oErr
    LOCAL cValue
    LOCAL lCanAcc
    LOCAL aItemRef
+   LOCAL lExit := .F.
+   LOCAL nLenScrll  := ::oWindow:Browser:nRight - ::oWindow:Browser:nLeft - ::oWindow:Browser:GetColumn( 1 ):width
 
    // make sure browse is stable
    oBrowse:forceStable()
    // if confirming new record, append blank
-
    aItemRef := ::pItems[ ::ArrayIndex ]
    cValue := __dbgObjGetValue( ::TheObj, aItemRef[ OMSG_NAME ], @lCanAcc )
    IF ! lCanAcc
@@ -183,80 +170,133 @@ METHOD PROCEDURE doGet( oBrowse ) CLASS HBDbObject
    ENDIF
    cValue := __dbgValToExp( cValue )
 
-   IF __dbgInput( Row(), oBrowse:nLeft + oBrowse:GetColumn( 1 ):width + 1, ;
-                  oBrowse:getColumn( oBrowse:colPos ):Width, @cValue, ;
-                  __dbgExprValidBlock(), __dbgColors()[ 2 ], 256 )
-      BEGIN SEQUENCE WITH __BreakBlock()
-         __dbgObjSetValue( ::TheObj, aItemRef[ OMSG_NAME ], &cValue )
-      RECOVER USING oErr
-         __dbgAlert( oErr:description )
-      END SEQUENCE
-   ENDIF
+   WHILE ! lExit
+      cValue  := PadR( cValue, Max( 255, Len( cValue ) ) )
+      __dbgInput( Row(), oBrowse:nLeft + oBrowse:GetColumn( 1 ):width + 1, ;
+                  nLenScrll, @cValue, __dbgExprValidBlock(), __Dbg():ClrModal(), 256 )
+      lExit := .T.
+      IF LastKey() == K_ENTER
+         BEGIN SEQUENCE WITH {| oErr | Break( oErr ) }
+            __dbgObjSetValue( ::TheObj, aItemRef[ OMSG_NAME ], &cValue )
+         RECOVER USING oErr
+            lExit := .F.
+            __dbgAlert( oErr:description )
+         END SEQUENCE
+      ENDIF
+   ENDDO
 
    RETURN
 
-METHOD PROCEDURE SetsKeyPressed( nKey, oBrwSets ) CLASS HBDbObject
+METHOD PROCEDURE SetsKeyPressed( nKey, nSets ) CLASS HBDbObject
 
    LOCAL aItemRef
+   LOCAL oBrw := ::oWindow:Browser
+   Local nMRow
+   Local nMCol
+   LOCAL n
 
    SWITCH nKey
-   CASE K_UP
-      oBrwSets:Up()
-      EXIT
+      CASE K_UP
+           IF ::ArrayIndex > 1
+              oBrw:RefreshCurrent()
+              oBrw:Up()
+              oBrw:ForceStable()
+           ENDIF
+           EXIT
 
-   CASE K_DOWN
-      oBrwSets:Down()
-      EXIT
+      CASE K_DOWN
+           IF ::ArrayIndex < nSets
+              oBrw:RefreshCurrent()
+              oBrw:Down()
+              oBrw:ForceStable()
+           ENDIF
+           EXIT
 
-   CASE K_HOME
-   CASE K_CTRL_PGUP
-   CASE K_CTRL_HOME
-      oBrwSets:GoTop()
-      EXIT
+      CASE K_HOME
+           IF ::ArrayIndex > 1
+              oBrw:GoTop()
+              oBrw:ForceStable()
+           ENDIF
+           EXIT
 
-   CASE K_END
-   CASE K_CTRL_PGDN
-   CASE K_CTRL_END
-      oBrwSets:GoBottom()
-      EXIT
+      CASE K_END
+           IF ::ArrayIndex < nSets
+              oBrw:GoBottom()
+              oBrw:ForceStable()
+           ENDIF
+           EXIT
 
-   CASE K_PGDN
-      oBrwSets:pageDown()
-      EXIT
+      CASE K_PGUP
+           oBrw:PageUp()
+           oBrw:RefreshCurrent()
+           oBrw:ForceStable()
+           EXIT
 
-   CASE K_PGUP
-      oBrwSets:PageUp()
-      EXIT
+      CASE K_PGDN
+           oBrw:PageDown()
+           oBrw:RefreshCurrent()
+           oBrw:ForceStable()
+           EXIT
 
-   CASE K_ENTER
+      CASE K_LBUTTONDOWN
+      CASE K_LDBLCLK
 
-      aItemRef := ::pItems[ ::ArrayIndex ]
-      DO CASE
-      CASE HB_ISARRAY( aItemRef[ OMSG_VALUE ] )
-         IF Len( aItemRef[ OMSG_VALUE ] ) > 0
-            HBDbArray():New( aItemRef[ OMSG_VALUE ], aItemRef[ OMSG_NAME ] )
-         ENDIF
-      CASE HB_ISHASH( aItemRef[ OMSG_VALUE ] )
-         IF Len( aItemRef[ OMSG_VALUE ] ) > 0
-            HBDbHash():New( aItemRef[ OMSG_VALUE ], aItemRef[ OMSG_NAME ] )
-         ENDIF
-      CASE HB_ISOBJECT( aItemRef[ OMSG_VALUE ] )
-         HBDbObject():New( aItemRef[ OMSG_VALUE ], aItemRef[ OMSG_NAME ] )
-      CASE ! aItemRef[ OMSG_EDIT ] .OR. ;
-           HB_ISBLOCK( aItemRef[ OMSG_VALUE ] ) .OR. ;
-           HB_ISPOINTER( aItemRef[ OMSG_VALUE ] ) .OR. ;
-           ! ::lEditable
-         __dbgAlert( "Value cannot be edited" )
-      OTHERWISE
-         oBrwSets:RefreshCurrent()
-         ::doGet( oBrwSets )
-         oBrwSets:RefreshCurrent()
-         oBrwSets:ForceStable()
-      ENDCASE
+           nMRow := MRow()
+           nMCol := MCol()
+           IF ( nMRow >= oBrw:nTop  .And. nMRow <= oBrw:nBottom .And.;
+                nMCol >= oBrw:nLeft .And. nMCol <= oBrw:nRight )
+
+              n := oBrw:rowPos - ( nMRow - oBrw:nTop + 1 )
+              WHILE n > 0
+                 oBrw:Up()
+                 RefreshVarsS( oBrw )
+                 n--
+              ENDDO
+              WHILE n < 0
+                 oBrw:Down()
+                 RefreshVarsS( oBrw )
+                 n++
+              ENDDO
+
+           ENDIF
+
+           IF nKey == K_LBUTTONDOWN
+              EXIT
+           ENDIF
+      CASE K_ENTER
+
+         aItemRef := ::pItems[ ::ArrayIndex ]
+         DO CASE
+            CASE HB_ISARRAY( aItemRef[ OMSG_VALUE ] )
+               IF Len( aItemRef[ OMSG_VALUE ] ) > 0
+                  oBrw:Hilite()
+                  __dbgArrays( aItemRef[ OMSG_VALUE ], aItemRef[ OMSG_NAME ] )
+               ELSE   
+                  __dbgAlert( "Array is empty" )
+               ENDIF
+            CASE HB_ISHASH( aItemRef[ OMSG_VALUE ] )
+               IF Len( aItemRef[ OMSG_VALUE ] ) > 0
+                  oBrw:Hilite()
+                  __dbgHashes( aItemRef[ OMSG_VALUE ], aItemRef[ OMSG_NAME ] )
+               ENDIF
+            CASE HB_ISOBJECT( aItemRef[ OMSG_VALUE ] )
+               oBrw:Hilite()
+               __dbgObject( aItemRef[ OMSG_VALUE ], aItemRef[ OMSG_NAME ] )
+            CASE ! aItemRef[ OMSG_EDIT ] .OR. ;
+                 HB_ISBLOCK( aItemRef[ OMSG_VALUE ] ) .OR. ;
+                 HB_ISPOINTER( aItemRef[ OMSG_VALUE ] ) .OR. ;
+                 ! ::lEditable
+               __dbgAlert( "Value cannot be edited" )
+            OTHERWISE
+               oBrw:RefreshCurrent()
+               ::doGet( oBrw )
+               oBrw:RefreshCurrent()
+               oBrw:ForceStable()
+         ENDCASE
 
    ENDSWITCH
 
-   oBrwSets:ForceStable()
+   RefreshVarsS( oBrw )
 
    RETURN
 
@@ -302,3 +342,20 @@ STATIC FUNCTION __dbgObjSetValue( oObject, cVar, xValue )
    END SEQUENCE
 
    RETURN xValue
+
+STATIC PROCEDURE RefreshVarsS( oBrowse )
+
+   LOCAL nLen := oBrowse:ColCount
+
+   oBrowse:refreshCurrent():forceStable()
+
+   IF ( nLen == 2 )
+      oBrowse:dehilite():colpos:=2
+   ENDIF
+   oBrowse:dehilite():forcestable()
+   IF ( nLen == 2 )
+      oBrowse:hilite():colpos:=1
+   ENDIF
+   oBrowse:hilite()
+
+   RETURN

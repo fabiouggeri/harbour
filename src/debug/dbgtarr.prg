@@ -54,17 +54,15 @@
 
 CREATE CLASS HBDbArray
 
-   VAR aWindows   INIT {}
+   VAR oWindow
    VAR TheArray
    VAR arrayname
-   VAR nCurWindow INIT 0
    VAR lEditable
 
    METHOD New( aArray, cVarName, lEditable )
-
-   METHOD addWindows( aArray, nRow )
-   METHOD doGet( oBrowse, pItem, nSet )
-   METHOD SetsKeyPressed( nKey, oBrwSets, oWnd, cName, aArray )
+   METHOD createWindow()
+   METHOD doGet( nSet )
+   METHOD SetsKeyPressed( nKey )
 
 ENDCLASS
 
@@ -73,167 +71,193 @@ METHOD New( aArray, cVarName, lEditable ) CLASS HBDbArray
    ::arrayName := cVarName
    ::TheArray := aArray
    ::lEditable := hb_defaultValue( lEditable, .T. )
-
-   ::addWindows( ::TheArray )
+   ::createWindow()
 
    RETURN Self
 
-METHOD addWindows( aArray, nRow ) CLASS HBDbArray
+METHOD createWindow() CLASS HBDbArray
 
-   LOCAL oBrwSets
-   LOCAL nSize := Len( aArray )
-   LOCAL oWndSets
+   LOCAL nSize := Len( ::TheArray )
+   LOCAL nWidth
    LOCAL nColWidth
    LOCAL oCol
+   LOCAL nRow  := Row() + 1
 
-   IF nSize < MaxRow() - 2
-      IF HB_ISNUMERIC( nRow )
-         oWndSets := HBDbWindow():New( GetTopPos( nRow ), 5, getBottomPos( nRow + nSize + 1 ), MaxCol() - 5, ;
-            ::arrayName + "[1.." + hb_ntos( nSize ) + "]", "N/W" )
-      ELSE
-         oWndSets := HBDbWindow():New( 1, 5, 2 + nSize, MaxCol() - 5, ;
-            ::arrayName + "[1.." + hb_ntos( nSize ) + "]", "N/W" )
-      ENDIF
+   IF ( nsize < MaxRow() - 2 )
+      nRow := GetTopPos( nRow )
+      ::oWindow := HBDbWindow():New( nRow , 5, GetBottomPos( nRow + nSize + 1 ), MaxCol() - 5,;
+                                    ::arrayName + "[1.." + AllTrim( Str( nsize, 6 ) ) + "]", "N/W" )
    ELSE
-      oWndSets := HBDbWindow():New( 1, 5, MaxRow() - 2, MaxCol() - 5, ;
-         ::arrayName + "[1.." + hb_ntos( nSize ) + "]", "N/W" )
+      ::oWindow := HBDbWindow():New( 1, 5, MaxRow() - 2, MaxCol() - 5,;
+                                    ::arrayName + "[1.." + AllTrim( Str( nsize, 6 ) ) + "]","N/W")
    ENDIF
 
-   ::nCurWindow++
-   oWndSets:lFocused := .T.
-   AAdd( ::aWindows, oWndSets )
+   nWidth  := ::oWindow:nRight - ::oWindow:nLeft - 1
+   ::oWindow:Browser := HBDbBrowser():New( ::oWindow:nTop + 1, ::oWindow:nLeft + 1, ::oWindow:nBottom - 1, ::oWindow:nRight - 1 )
+   ::oWindow:Browser:autolite  := .f.
+   ::oWindow:Browser:ColorSpec := __Dbg():ClrModal()
+   ::oWindow:Browser:Cargo     := { 1, {} } 
+   AAdd(::oWindow:Browser:Cargo[2],::TheArray)
 
-   oBrwSets := HBDbBrowser():New( oWndSets:nTop + 1, oWndSets:nLeft + 1, oWndSets:nBottom - 1, oWndSets:nRight - 1 )
-   oBrwSets:ColorSpec := __dbg():ClrModal()
-   oBrwSets:Cargo := { 1, {} }  // Actual highlighted row
-   AAdd( oBrwSets:Cargo[ 2 ], aArray )
-
-   oBrwSets:AddColumn( oCol := HBDbColumnNew( "", {|| ::arrayName + "[" + hb_ntos( oBrwSets:cargo[ 1 ] ) + "]" } ) )
-   oCol:width := Len( ::arrayName + "[" + hb_ntos( Len( aArray ) ) + "]" )
+   oCol := TBColumnNew("", { || ::arrayName+"["+alltrim(str(::oWindow:Browser:cargo[ 1 ],6))+"]"} )
+   ::oWindow:Browser:AddColumn( oCol )
+   ocol:width    := Len(::arrayName+"["+alltrim(str(len(::TheArray),6))+"]" )
    oCol:DefColor := { 1, 2 }
-   nColWidth := oCol:Width
+   nColWidth     := oCol:Width
 
-   oBrwSets:AddColumn( oCol := HBDbColumnNew( "", {|| __dbgValToExp( aArray[ oBrwSets:cargo[ 1 ] ] ) } ) )
+   oCol := TBColumnNew( "" ,{ || PadR( __dbgValToExp( ::TheArray[::oWindow:Browser:cargo[ 1 ] ] ), nWidth - nColWidth - 1 ) } )
+   ::oWindow:Browser:AddColumn( oCol )
+   oCol:DefColor:={ 1, 3 }
 
-   oCol:width := oWndSets:nRight - oWndSets:nLeft - nColWidth - 2
-   oCol:defColor := { 1, 3 }
+   ::oWindow:Browser:GoTopBlock    := { || ::oWindow:Browser:cargo[ 1 ] := 1 }
+   ::oWindow:Browser:GoBottomBlock := { || ::oWindow:Browser:cargo[ 1 ] := Len( ::oWindow:Browser:cargo[ 2, 1 ] ) }
+   ::oWindow:Browser:SkipBlock     := { | nPos | nPos := ArrayBrowseSkip( nPos, ::oWindow:Browser ),;
+                                                 ::oWindow:Browser:cargo[ 1 ] := ::oWindow:Browser:cargo[ 1 ] + nPos,; 
+                                                 nPos }
 
-   oBrwSets:goTopBlock := {|| oBrwSets:cargo[ 1 ] := 1 }
-   oBrwSets:goBottomBlock := {|| oBrwSets:cargo[ 1 ] := Len( oBrwSets:cargo[ 2 ][ 1 ] ) }
-   oBrwSets:skipBlock := {| nPos | nPos := ArrayBrowseSkip( nPos, oBrwSets ), ;
-                                   oBrwSets:cargo[ 1 ] := oBrwSets:cargo[ 1 ] + nPos, nPos }
-   oBrwSets:colPos := 2
-
-   ::aWindows[ ::nCurWindow ]:bPainted    := {|| oBrwSets:forcestable() }
-   ::aWindows[ ::nCurWindow ]:bKeyPressed := ;
-      {| nKey | ::SetsKeyPressed( nKey, oBrwSets, ::aWindows[ ::nCurWindow ], ::arrayName, aArray ) }
-
-   ::aWindows[ ::nCurWindow ]:ShowModal()
+   ::oWindow:bPainted    := { || ::oWindow:Browser:RefreshAll():forcestable(), RefreshVarsS( ::oWindow:Browser ) }
+   ::oWindow:bKeyPressed := { | nKey | ::SetsKeyPressed( nKey ) }
+   ::oWindow:Browser:colPos := 2
+   SetCursor( SC_NONE )
+   ::oWindow:ShowModal()
 
    RETURN Self
 
-METHOD PROCEDURE doGet( oBrowse, pItem, nSet ) CLASS HBDbArray
+METHOD PROCEDURE doGet( nSet ) CLASS HBDbArray
 
-   LOCAL oErr
-   LOCAL cValue
+   LOCAL nKey
+   LOCAL nLenScrll  := ::oWindow:Browser:nRight - ::oWindow:Browser:nLeft - ::oWindow:Browser:GetColumn( 1 ):width
+   LOCAL cValue     := __dbgValToExp( ::TheArray[ nSet ] )
+   LOCAL lExit      := .F.
+   LOCAL nRow
+   LOCAL oError
 
    // make sure browse is stable
-   oBrowse:forceStable()
-   // if confirming new record, append blank
+   ::oWindow:Browser:forcestable()
 
-   cValue := __dbgValToExp( pItem[ nSet ] )
+   nRow := row()
 
-   IF __dbgInput( Row(), oBrowse:nLeft + oBrowse:GetColumn( 1 ):width + 1, ;
-                  oBrowse:getColumn( 2 ):Width, @cValue, ;
-                  __dbgExprValidBlock(), __dbgColors()[ 2 ], 256 )
-      BEGIN SEQUENCE WITH __BreakBlock()
-         pItem[ nSet ] := &cValue
-      RECOVER USING oErr
-         __dbgAlert( oErr:description )
-      END SEQUENCE
-   ENDIF
+   WHILE ! lExit
+
+      cValue  := PadR( cValue, Max( 255, Len( cValue ) ) )
+      __dbgInput( nRow, ::oWindow:Browser:nLeft + ::oWindow:Browser:GetColumn( 1 ):width + 1,; 
+                 nLenScrll, @cValue, __dbgExprValidBlock(), __Dbg():ClrModal(), 256 )
+
+      lExit := .T.
+      IF LastKey() == K_ENTER
+         BEGIN SEQUENCE WITH {| oErr | Break( oErr ) }
+            ::TheArray[ nSet ] = &cValue
+         RECOVER USING oError
+            lExit := .F.
+            __dbgAlert( oError:description )
+         END SEQUENCE
+      ENDIF
+
+   End
+
+   // check exit key from get
+   nKey := LastKey()
+   IF nKey == K_UP .OR. nKey == K_DOWN .OR. nKey == K_PGUP .OR. nKey == K_PGDN
+       __KEYBOARD( CHR( nKey ) )
+   END
 
    RETURN
 
-METHOD SetsKeyPressed( nKey, oBrwSets, oWnd, cName, aArray ) CLASS HBDbArray
+METHOD SetsKeyPressed( nKey ) CLASS HBDbArray
 
-   LOCAL nSet := oBrwSets:cargo[ 1 ]
-   LOCAL cOldName := ::arrayName
-
+   LOCAL oBrw := ::oWindow:Browser
+   LOCAL nSet := oBrw:cargo[1]
+   LOCAL cTemp := Str( nSet, 4 )
+   LOCAL nMRow
+   LOCAL nMCol
+   LOCAL n
+   
    SWITCH nKey
-   CASE K_UP
-      oBrwSets:Up()
-      EXIT
+      CASE K_UP
+           oBrw:Up()
+           Exit
 
-   CASE K_DOWN
-      oBrwSets:Down()
-      EXIT
+      CASE K_DOWN
+           oBrw:Down()
+           Exit
 
-   CASE K_HOME
-   CASE K_CTRL_PGUP
-   CASE K_CTRL_HOME
-      oBrwSets:GoTop()
-      EXIT
+      CASE K_HOME
+      CASE K_CTRL_PGUP
+      CASE K_CTRL_HOME
+           oBrw:GoTop()
+           Exit
 
-   CASE K_END
-   CASE K_CTRL_PGDN
-   CASE K_CTRL_END
-      oBrwSets:GoBottom()
-      EXIT
+      CASE K_END
+      CASE K_CTRL_PGDN
+      CASE K_CTRL_END
+           oBrw:GoBottom()
+           Exit
 
-   CASE K_PGDN
-      oBrwSets:pageDown()
-      EXIT
+      CASE K_PGDN
+           oBrw:pageDown()
+           Exit
 
-   CASE K_PGUP
-      oBrwSets:PageUp()
-      EXIT
+      CASE K_PGUP
+           oBrw:PageUp()
+           Exit
 
-   CASE K_ENTER
-      IF HB_ISARRAY( aArray[ nSet ] )
-         IF Len( aArray[ nSet ] ) == 0
-            __dbgAlert( "Array is empty" )
+      CASE K_LBUTTONDOWN
+      CASE K_LDBLCLK
+
+           nMRow := MRow()
+           nMCol := MCol()
+           If ( nMRow >= oBrw:nTop  .And. nMRow <= oBrw:nBottom .And.;
+                nMCol >= oBrw:nLeft .And. nMCol <= oBrw:nRight )
+
+              n := oBrw:rowPos - ( nMRow - oBrw:nTop + 1 )
+              while n > 0
+                 oBrw:Up()
+                 RefreshVarsS( oBrw )
+                 n--
+              end
+              while n < 0
+                 oBrw:Down()
+                 RefreshVarsS( oBrw )
+                 n++
+              end
+
+           EndIf
+           If nKey == K_LBUTTONDOWN
+              Exit
+           EndIf
+
+      CASE K_ENTER
+         IF HB_ISARRAY( ::TheArray[nSet] )
+
+            IF Len( ::TheArray[ nSet ] ) == 0
+               __dbgAlert( "Array is empty" )
+            ELSE
+               oBrw:Hilite()
+               __dbgArrays( ::TheArray[nSet], ::arrayname + "[" + AllTrim( cTemp ) + "]", ::lEditable )
+            ENDIF
+
+         ELSEIF HB_ISPOINTER( ::TheArray[ nSet ] ) .OR. HB_ISBLOCK( ::TheArray[ nSet ] ) .OR. ! ::lEditable
+
+            Alert("Value cannot be edited")
+
          ELSE
-            SetPos( oWnd:nBottom, oWnd:nLeft )
-            ::aWindows[ ::nCurWindow ]:lFocused := .F.
-            ::arrayname := ::arrayname + "[" + hb_ntos( nSet ) + "]"
-            ::AddWindows( aArray[ nSet ], oBrwSets:RowPos + oBrwSets:nTop )
-            ::arrayname := cOldName
-
-            hb_ADel( ::aWindows, ::nCurWindow, .T. )
-            IF ::nCurWindow == 0
-               ::nCurWindow := 1
+            oBrw:RefreshCurrent()
+            IF HB_ISOBJECT( ::TheArray[ nSet ] )
+               __dbgObject( ::TheArray[ nSet ], ::arrayName + "[" + AllTrim( Str( nSet ) ) + "]", ::lEditable )
+            ELSEIF HB_ISHASH( ::TheArray[ nSet ] )
+               __dbgHashes( ::TheArray[ nSet ], ::arrayName + "[" + AllTrim( Str( nSet ) ) + "]" )
             ELSE
-               ::nCurWindow--
+               ::doGet( nSet )
             ENDIF
+            oBrw:RefreshCurrent()
+            oBrw:ForceStable()
+
          ENDIF
-      ELSEIF HB_ISPOINTER( aArray[ nSet ] ) .OR. ! ::lEditable
-         __dbgAlert( "Value cannot be edited" )
-      ELSE
-         oBrwSets:RefreshCurrent()
-         DO CASE
-         CASE HB_ISOBJECT( aArray[ nSet ] )
-            __dbgObject( aArray[ nSet ], cName + "[" + hb_ntos( nSet ) + "]" )
-         CASE HB_ISHASH( aArray[ nSet ] )
-            IF Len( aArray[ nSet ] ) == 0
-               __dbgAlert( "Hash is empty" )
-            ELSE
-               __dbgHashes( aArray[ nSet ], cName + "[" + hb_ntos( nSet ) + "]" )
-            ENDIF
-         OTHERWISE
-            ::doGet( oBrwsets, aArray, nSet )
-         ENDCASE
-         oBrwSets:RefreshCurrent()
-         oBrwSets:ForceStable()
-      ENDIF
-      EXIT
+         EXIT
 
-   ENDSWITCH
+   END
 
-   oBrwSets:forceStable()
-
-   ::aWindows[ ::nCurWindow ]:SetCaption( cName + "[" + hb_ntos( oBrwSets:cargo[ 1 ] ) + ".." + ;
-      hb_ntos( Len( aArray ) ) + "]" )
+   RefreshVarsS( oBrw )
 
    RETURN Self
 
@@ -251,3 +275,21 @@ STATIC FUNCTION ArrayBrowseSkip( nPos, oBrwSets )
       iif( oBrwSets:cargo[ 1 ] + nPos < 1, -oBrwSets:cargo[ 1 ] + 1, ;
       iif( oBrwSets:cargo[ 1 ] + nPos > Len( oBrwSets:cargo[ 2 ][ 1 ] ), ;
       Len( oBrwSets:cargo[ 2 ][ 1 ] ) - oBrwSets:cargo[ 1 ], nPos ) )
+
+STATIC PROCEDURE RefreshVarsS( oBrowse )
+
+   LOCAL nLen := oBrowse:ColCount
+
+   oBrowse:refreshCurrent():forceStable()
+
+   IF ( nLen == 2 )
+      oBrowse:dehilite():colpos:=2
+   ENDIF
+   oBrowse:dehilite():forcestable()
+   IF ( nLen == 2 )
+      oBrowse:hilite():colpos:=1
+   ENDIF
+   oBrowse:hilite()
+
+   RETURN
+      

@@ -57,20 +57,15 @@ PROCEDURE __dbgShowWorkAreas()
 
    LOCAL oDlg
    LOCAL oCol
-
-   LOCAL aAlias := {}
+   LOCAL aAlias   := {}
    LOCAL aBrw[ 3 ]
    LOCAL aStruc
    LOCAL aInfo
-
-   LOCAL cColor := iif( __dbg():lMonoDisplay, "N/W, W/N, W+/W, W+/N", "N/W, N/BG, R/W, R/BG" )
-
-   LOCAL n1
-   LOCAL n2
-   LOCAL n3 := 1
+   LOCAL cColor   := iif( __dbg():lMonoDisplay, "N/W, W/N, W+/W, W+/N", "N/W, N/BG, R/W, R/BG" )
    LOCAL cur_id
-
    LOCAL nOldArea := Select()
+   LOCAL nCursor
+   LOCAL nFocus   := 1
 
    hb_WAEval( {|| AAdd( aAlias, { Select(), Alias() } ) } )
 
@@ -79,7 +74,8 @@ PROCEDURE __dbgShowWorkAreas()
       RETURN
    ENDIF
 
-   IF ( cur_id := AScan( aAlias, {| x | x[ 1 ] == nOldArea } ) ) == 0
+   cur_id := AScan( aAlias, {| x | x[ 1 ] == nOldArea } )
+   IF cur_id == 0
       cur_id := 1
       dbSelectArea( aAlias[ 1 ][ 1 ] )
    ENDIF
@@ -88,71 +84,71 @@ PROCEDURE __dbgShowWorkAreas()
 
    oDlg := HBDbWindow():New( 2, 3, 21, 76, "", cColor )
 
-   oDlg:bKeyPressed := {| nKey | DlgWorkAreaKey( nKey, oDlg, aBrw, aAlias, @aStruc, @aInfo ) }
+   oDlg:bKeyPressed := {| nKey | DlgWorkAreaKey( nKey, oDlg, aBrw, aAlias, @aStruc, @aInfo, @nFocus ) }
    oDlg:bPainted    := {|| DlgWorkAreaPaint( oDlg, aBrw ) }
 
    /* Alias browse */
 
    aBrw[ 1 ] := HBDbBrowser():new( oDlg:nTop + 1, oDlg:nLeft + 1, oDlg:nBottom - 1, oDlg:nLeft + 11 )
-
-   aBrw[ 1 ]:Cargo         := ( n1 := cur_id )
+   aBrw[ 1 ]:Autolite      := .T.
+   aBrw[ 1 ]:Cargo         := cur_id
    aBrw[ 1 ]:ColorSpec     := oDlg:cColor
-   aBrw[ 1 ]:GoTopBlock    := {|| aBrw[ 1 ]:Cargo := n1 := 1 }
-   aBrw[ 1 ]:GoBottomBlock := {|| aBrw[ 1 ]:Cargo := n1 := Len( aAlias ) }
-   aBrw[ 1 ]:SkipBlock     := {| nSkip, nPos | nPos := n1, ;
-      aBrw[ 1 ]:Cargo := n1 := iif( nSkip > 0, Min( Len( aAlias ), n1 + nSkip ), ;
-      Max( 1, n1 + nSkip ) ), ;
-      n1 - nPos }
+   aBrw[ 1 ]:GoTopBlock    := {|| aBrw[ 1 ]:Cargo := 1 }
+   aBrw[ 1 ]:GoBottomBlock := {|| aBrw[ 1 ]:Cargo := Len( aAlias ) }
+   aBrw[ 1 ]:SkipBlock     := {| nSkip, nPos | nPos := aBrw[ 1 ]:Cargo, ;
+                                               aBrw[ 1 ]:Cargo := iif( nSkip > 0, Min( Len( aAlias ), aBrw[ 1 ]:Cargo + nSkip ), ;
+                                               Max( 1, aBrw[ 1 ]:Cargo + nSkip ) ), ;
+                                               aBrw[ 1 ]:Cargo - nPos }
 
-   aBrw[ 1 ]:AddColumn( oCol := HBDbColumnNew( "", {|| PadR( aAlias[ n1 ][ 2 ], 11 ) } ) )
+   aBrw[ 1 ]:AddColumn( oCol := TBColumnNew( "", {|| PadR( aAlias[ aBrw[ 1 ]:Cargo ][ 2 ], 11 ) } ) )
 
-   oCol:ColorBlock := {|| iif( aAlias[ n1 ][ 1 ] == Select(), { 3, 4 }, { 1, 2 } ) }
-
-   IF cur_id > 1
-      aBrw[ 1 ]:Configure():MoveCursor( cur_id - 1 )
-   ENDIF
+   oCol:ColorBlock := {|| iif( aAlias[ aBrw[ 1 ]:Cargo ][ 1 ] == nOldArea, { 3, 4 }, { 1, 2 } ) }
 
    /* Info Browse */
 
-   aInfo := ( aAlias[ n1 ][ 1 ] )->( DbfInfo() )
+   aInfo := ( aAlias[ aBrw[ 1 ]:Cargo ][ 1 ] )->( DbfInfo( nOldArea ) )
 
    aBrw[ 2 ] := HBDbBrowser():new( oDlg:nTop + 7, oDlg:nLeft + 13, oDlg:nBottom - 1, oDlg:nLeft + 52 )
 
-   aBrw[ 2 ]:Cargo         := ( n2 := 1 )
+   aBrw[ 2 ]:Autolite      := .F.
+   aBrw[ 2 ]:Cargo         := 1
    aBrw[ 2 ]:ColorSpec     := oDlg:cColor
-   aBrw[ 2 ]:GoTopBlock    := {|| aBrw[ 2 ]:Cargo := n2 := 1 }
-   aBrw[ 2 ]:GoBottomBlock := {|| aBrw[ 2 ]:Cargo := n2 := Len( aInfo ) }
-   aBrw[ 2 ]:SkipBlock     := {| nSkip, nPos | nPos := n2, ;
-      aBrw[ 2 ]:Cargo := n2 := iif( nSkip > 0, Min( Len( aInfo ), n2 + nSkip ), ;
-      Max( 1, n2 + nSkip ) ), ;
-      n2 - nPos }
+   aBrw[ 2 ]:GoTopBlock    := {|| aBrw[ 2 ]:Cargo := 1 }
+   aBrw[ 2 ]:GoBottomBlock := {|| aBrw[ 2 ]:Cargo := Len( aInfo ) }
+   aBrw[ 2 ]:SkipBlock     := {| nSkip, nPos | nPos := aBrw[ 2 ]:Cargo, ;
+                                               aBrw[ 2 ]:Cargo := iif( nSkip > 0, Min( Len( aInfo ), aBrw[ 2 ]:Cargo + nSkip ), ;
+                                               Max( 1, aBrw[ 2 ]:Cargo + nSkip ) ), ;
+                                               aBrw[ 2 ]:Cargo - nPos }
 
-   aBrw[ 2 ]:AddColumn( oCol := HBDbColumnNew( "", {|| PadR( aInfo[ n2 ], 40 ) } ) )
+   aBrw[ 2 ]:AddColumn( oCol := TBColumnNew( "", {|| PadR( aInfo[ aBrw[ 2 ]:Cargo, 2 ], 40 ) } ) )
 
-   oCol:ColorBlock := {|| iif( aAlias[ n1 ][ 1 ] == Select() .AND. n2 == 1, { 3, 4 }, { 1, 2 } ) }
+   oCol:ColorBlock := {|| iif( aInfo[ aBrw[ 2 ]:Cargo, 1 ], { 3, 4 }, { 1, 2 } ) }
 
    /* Structure browser */
 
-   aStruc := ( aAlias[ n1 ][ 1 ] )->( dbStruct() )
+   aStruc := ( aAlias[ aBrw[ 1 ]:Cargo ][ 1 ] )->( dbStruct() )
 
    aBrw[ 3 ] := HBDbBrowser():new( oDlg:nTop + 1, oDlg:nLeft + 54, oDlg:nBottom - 1, oDlg:nLeft + 72 )
 
-   aBrw[ 3 ]:Cargo         := n3 := 1
+   aBrw[ 3 ]:Autolite      := .F.
+   aBrw[ 3 ]:Cargo         := 1
    aBrw[ 3 ]:ColorSpec     := oDlg:cColor
-   aBrw[ 3 ]:GoTopBlock    := {|| aBrw[ 3 ]:Cargo := n3 := 1 }
-   aBrw[ 3 ]:GoBottomBlock := {|| aBrw[ 3 ]:Cargo := n3 := Len( aStruc ) }
-   aBrw[ 3 ]:SkipBlock     := {| nSkip, nPos | nPos := n3, ;
-      aBrw[ 3 ]:Cargo := n3 := iif( nSkip > 0, Min( Len( aStruc ), n3 + nSkip ), ;
-      Max( 1, n3 + nSkip ) ), n3 - nPos }
+   aBrw[ 3 ]:GoTopBlock    := {|| aBrw[ 3 ]:Cargo := 1 }
+   aBrw[ 3 ]:GoBottomBlock := {|| aBrw[ 3 ]:Cargo := Len( aStruc ) }
+   aBrw[ 3 ]:SkipBlock     := {| nSkip, nPos | nPos := aBrw[ 3 ]:Cargo, ;
+                                               aBrw[ 3 ]:Cargo := iif( nSkip > 0, Min( Len( aStruc ), aBrw[ 3 ]:Cargo + nSkip ), ;
+                                               Max( 1, aBrw[ 3 ]:Cargo + nSkip ) ), aBrw[ 3 ]:Cargo - nPos }
 
-   aBrw[ 3 ]:AddColumn( HBDbColumnNew( "", {|| PadR( aStruc[ n3 ][ DBS_NAME ], 10 ) + " " + ;
-      PadR( aStruc[ n3 ][ DBS_TYPE ], 1 ) + " " + ;
-      Str( aStruc[ n3 ][ DBS_LEN ], 3 ) + " " + ;
-      Str( aStruc[ n3 ][ DBS_DEC ], 2 ) } ) )
+   aBrw[ 3 ]:AddColumn( TBColumnNew( "", {|| PadR( aStruc[ aBrw[ 3 ]:Cargo ][ DBS_NAME ], 10 ) + " " + ;
+                                             PadR( aStruc[ aBrw[ 3 ]:Cargo ][ DBS_TYPE ], 1 ) + " " + ;
+                                             Str( aStruc[ aBrw[ 3 ]:Cargo ][ DBS_LEN ], 3 ) + " " + ;
+                                             Str( aStruc[ aBrw[ 3 ]:Cargo ][ DBS_DEC ], 2 ) } ) )
 
    /* Show dialog */
 
+   nCursor := SetCursor( SC_NONE )
    oDlg:ShowModal()
+   SetCursor( nCursor )
 
    dbSelectArea( nOldArea )
 
@@ -160,10 +156,8 @@ PROCEDURE __dbgShowWorkAreas()
 
 STATIC PROCEDURE DlgWorkAreaPaint( oDlg, aBrw )
 
-   LOCAL oDebug := __dbg()
-
+   DispBegin()
    /* Display captions */
-
    hb_DispOutAt( oDlg:nTop, oDlg:nLeft + 5, " Area ", oDlg:cColor )
    hb_DispOutAt( oDlg:nTop, oDlg:nLeft + 28, " Status ", oDlg:cColor )
    hb_DispOutAt( oDlg:nTop, oDlg:nLeft + 56, " Structure ", oDlg:cColor )
@@ -195,39 +189,41 @@ STATIC PROCEDURE DlgWorkAreaPaint( oDlg, aBrw )
    aBrw[ 1 ]:ForceStable()
    aBrw[ 2 ]:ForceStable()
    aBrw[ 3 ]:ForceStable()
-   AEval( aBrw, {| a, i | iif( oDebug:nWaFocus == i, a:HiLite(), a:DeHilite() ) } )
 
    UpdateInfo( oDlg, Alias() )
+   DispEnd()
 
    RETURN
 
-STATIC PROCEDURE DlgWorkAreaKey( nKey, oDlg, aBrw, aAlias, /* @ */ aStruc, /* @ */ aInfo )
+STATIC PROCEDURE DlgWorkAreaKey( nKey, oDlg, aBrw, aAlias, /* @ */ aStruc, /* @ */ aInfo, /* @ */ nFocus )
 
-   LOCAL oDebug := __dbg()
    LOCAL nAlias
 
-   IF nKey == K_TAB .OR. nKey == K_SH_TAB
-      aBrw[ oDebug:nWaFocus ]:Dehilite()
-      oDebug:nWaFocus += iif( nKey == K_TAB, 1, -1 )
-      IF oDebug:nWaFocus < 1
-         oDebug:nWaFocus := 3
+   IF nKey == K_TAB .or. nKey == K_SH_TAB
+      aBrw[ nFocus ]:AutoLite := .F.
+      aBrw[ nFocus ]:DeHilite()
+      nFocus := nFocus + iif( nKey == K_TAB, 1, -1)
+      IF nFocus < 1
+         nFocus := 3
       ENDIF
-      IF oDebug:nWaFocus > 3
-         oDebug:nWaFocus := 1
+      IF nFocus > 3
+         nFocus := 1
       ENDIF
-      aBrw[ oDebug:nWaFocus ]:Hilite()
+      aBrw[ nFocus ]:AutoLite := .T.
+      aBrw[ nFocus ]:forceStable()
+      aBrw[ nFocus ]:Hilite()
       RETURN
    ENDIF
-
-   SWITCH oDebug:nWaFocus
+   
+   SWITCH nFocus
    CASE 1
       nAlias := aBrw[ 1 ]:Cargo
-      WorkAreasKeyPressed( nKey, aBrw[ 1 ], Len( aAlias ) )
+      WorkAreasKeyPressed( nKey, aBrw[ 1 ] )
       IF nAlias != aBrw[ 1 ]:Cargo
          aBrw[ 2 ]:GoTop()
          aBrw[ 2 ]:Invalidate()
          aBrw[ 2 ]:ForceStable()
-         aInfo := ( aAlias[ aBrw[ 1 ]:Cargo ][ 1 ] )->( DbfInfo() )
+         aInfo := ( aAlias[ aBrw[ 1 ]:Cargo ][ 1 ] )->( DbfInfo( nAlias ) )
          aBrw[ 3 ]:Configure()
          aBrw[ 2 ]:Invalidate()
          aBrw[ 2 ]:RefreshAll()
@@ -246,101 +242,101 @@ STATIC PROCEDURE DlgWorkAreaKey( nKey, oDlg, aBrw, aAlias, /* @ */ aStruc, /* @ 
       ENDIF
       EXIT
    CASE 2
-      WorkAreasKeyPressed( nKey, aBrw[ 2 ], Len( aInfo ) )
+      WorkAreasKeyPressed( nKey, aBrw[ 2 ] )
       EXIT
    CASE 3
-      WorkAreasKeyPressed( nKey, aBrw[ 3 ], Len( aStruc ) )
+      WorkAreasKeyPressed( nKey, aBrw[ 3 ] )
       EXIT
    ENDSWITCH
 
    RETURN
 
-STATIC PROCEDURE WorkAreasKeyPressed( nKey, oBrw, nTotal )
+STATIC PROCEDURE WorkAreasKeyPressed( nKey, oBrw )
 
    SWITCH nKey
-   CASE K_UP
-
-      IF oBrw:Cargo > 1
-         oBrw:Cargo--
-         oBrw:RefreshCurrent()
+      CASE K_UP
          oBrw:Up()
          oBrw:ForceStable()
-      ENDIF
-      EXIT
+         EXIT
 
-   CASE K_DOWN
-
-      IF oBrw:Cargo < nTotal
-         oBrw:Cargo++
-         oBrw:RefreshCurrent()
+      CASE K_DOWN
          oBrw:Down()
          oBrw:ForceStable()
-      ENDIF
-      EXIT
+         EXIT
 
-   CASE K_HOME
-   CASE K_CTRL_PGUP
-   CASE K_CTRL_HOME
-
-      IF oBrw:Cargo > 1
-         oBrw:Cargo := 1
+      CASE K_HOME
+      CASE K_CTRL_PGUP
+      CASE K_CTRL_HOME
          oBrw:GoTop()
          oBrw:ForceStable()
-      ENDIF
-      EXIT
+         EXIT
 
-   CASE K_END
-   CASE K_CTRL_PGDN
-   CASE K_CTRL_END
-
-      IF oBrw:Cargo < nTotal
-         oBrw:Cargo := nTotal
+      CASE K_END
+      CASE K_CTRL_PGDN
+      CASE K_CTRL_END
          oBrw:GoBottom()
          oBrw:ForceStable()
-      ENDIF
-      EXIT
-
+         EXIT
+      
+      CASE K_PGDN
+           oBrw:PageDown()
+           oBrw:ForceStable()
+           EXIT
+           
+      CASE K_PGUP
+           oBrw:PageUp()
+           oBrw:ForceStable()
+           EXIT
+           
    ENDSWITCH
 
    RETURN
 
-STATIC FUNCTION DbfInfo()
+STATIC FUNCTION DbfInfo( nCurrentArea )
 
    LOCAL nFor
    LOCAL xValue
    LOCAL cValue
+   LOCAL aInfo := {}
 
-   LOCAL aInfo := { ;
-      "[" + hb_ntos( Select( Alias() ) ) + "] " + Alias(), ;
-      Space( 4 ) + "Current Driver", ;
-      Space( 8 ) + rddName(), ;
-      Space( 4 ) + "Workarea Information", ;
-      Space( 8 ) + "Select Area: " + hb_ntos( Select() ), ;
-      Space( 8 ) + "Record Size: " + hb_ntos( RecSize() ), ;
-      Space( 8 ) + "Header Size: " + hb_ntos( Header() ), ;
-      Space( 8 ) + "Field Count: " + hb_ntos( FCount() ), ;
-      Space( 8 ) + "Last Update: " + DToC( LUpdate() ), ;
-      Space( 8 ) + "Index order: " + hb_ntos( IndexOrd() ), ;
-      Space( 4 ) + "Current Record" }
+   AAdd( aInfo, { nCurrentArea == Select(), "[" + hb_ntos( Select( Alias() ) ) + "] " + Alias() } )
+   AAdd( aInfo, { .F., Space( 4 ) + "Current Driver" } )
+   AAdd( aInfo, { .F., Space( 8 ) + rddName() } )
+   If ! Empty( OrdName( 1 ) )
+      AAdd( aInfo, { .F., Space( 4 ) + "Order Keys" } )
+      nFor := 1
+      While ! Empty( OrdName( nFor ) )
+         AAdd(aInfo, { nFor == IndexOrd(), Space( 8 ) + OrdKey( nFor ) } )
+         nFor++
+      EndDo
+   EndIf
+   AAdd( aInfo, { .F., Space( 4 ) + "Workarea Information" } )
+   AAdd( aInfo, { .F., Space( 8 ) + "Select Area: " + hb_ntos( Select() ) } )
+   AAdd( aInfo, { .F., Space( 8 ) + "Record Size: " + hb_ntos( RecSize() ) } )
+   AAdd( aInfo, { .F., Space( 8 ) + "Header Size: " + hb_ntos( Header() ) } )
+   AAdd( aInfo, { .F., Space( 8 ) + "Field Count: " + hb_ntos( FCount() ) } )
+   AAdd( aInfo, { .F., Space( 8 ) + "Last Update: " + DToC( LUpdate() ) } )
+   AAdd( aInfo, { .F., Space( 8 ) + "Index order: " + hb_ntos( IndexOrd() ) } )
+   AAdd( aInfo, { .F., Space( 4 ) + "Current Record" } )
 
    FOR nFor := 1 TO FCount()
 
-      xValue := __dbg():GetExprValue( "FieldGet(" + hb_ntos( nFor ) + ")" )
+      xValue := FieldGet( nFor )
 
       SWITCH ValType( xValue )
-      CASE "C"
-      CASE "M"
-         cValue := xValue
-         EXIT
+         CASE "C"
+         CASE "M"
+            cValue := xValue
+            EXIT
 #ifdef HB_CLP_STRICT
-      CASE "L"
-         cValue := iif( xValue, "T", "F" )
+         CASE "L"
+            cValue := iif( xValue, "T", "F" )
 #endif
-      OTHERWISE
-         cValue := __dbgValToStr( xValue )
+         OTHERWISE
+            cValue := __dbgValToStr( xValue )
       ENDSWITCH
 
-      AAdd( aInfo, Space( 8 ) + PadR( FieldName( nFor ), 10 ) + " = " + PadR( cValue, 19 ) )
+      AAdd( aInfo, { .F., Space( 8 ) + PadR( FieldName( nFor ), 10 ) + " = " + PadR( cValue, 19 ) } )
 
    NEXT
 

@@ -1122,23 +1122,12 @@ PHB_HDECLARED hb_compMethodAdd( HB_COMP_DECL, PHB_HCLASS pClass, const char * sz
 {
    PHB_HDECLARED pMethod;
 
-   if( HB_COMP_PARAM->iWarnings < 3 )
-      return NULL;
-
-   if( ! pClass )
-   {
-      char buffer[ 80 ];
-      hb_snprintf( buffer, sizeof( buffer ),
-                   "Class member '%s' declaration without class definition.\n", szMethodName );
-      hb_compOutErr( HB_COMP_PARAM, buffer );
-      HB_COMP_PARAM->iErrorCount++;
-      HB_COMP_PARAM->fError = HB_TRUE;
-      return NULL;
-   }
-
    #if 0
    printf( "\nDeclaring Method: %s of Class: %s Pointer: %li\n", szMethodName, pClass->szName, pClass );
    #endif
+
+   if( HB_COMP_PARAM->iWarnings < 3 )
+      return NULL;
 
    if( ( pMethod = hb_compMethodFind( pClass, szMethodName ) ) != NULL )
    {
@@ -1278,15 +1267,6 @@ void hb_compDeclaredParameterAdd( HB_COMP_DECL, const char * szVarName, PHB_VART
             pDeclared->pParamClasses[ pDeclared->iParamCount - 1 ] = hb_compClassFind( HB_COMP_PARAM, pVarType->szFromClass );
          }
       }
-   }
-   else if( ! HB_COMP_PARAM->pLastMethod )
-   {
-      char buffer[ 80 ];
-      hb_snprintf( buffer, sizeof( buffer ),
-                   "Message parameter '%s' declaration without class/message definition.\n", szVarName );
-      hb_compOutErr( HB_COMP_PARAM, buffer );
-      HB_COMP_PARAM->iErrorCount++;
-      HB_COMP_PARAM->fError = HB_TRUE;
    }
    else /* Declared Method Parameter */
    {
@@ -1784,7 +1764,8 @@ static void hb_compOptimizeFrames( HB_COMP_DECL, PHB_HFUNC pFunc )
             /* more then 255 local variables,
              * make a room for HB_P_LARGE[V]FRAME
              */
-            hb_compGenPCode1( 0, HB_COMP_PARAM );
+            // hb_compGenPCode1( 0, HB_COMP_PARAM );
+            pFunc->pCode[ pFunc->nPCodePos++ ] = 0;
             memmove( pFunc->pCode + 4, pFunc->pCode + 3, pFunc->nPCodePos - 4 );
             pFunc->pCode[ 0 ] = HB_P_LARGEFRAME;
             pFunc->pCode[ 1 ] = HB_LOBYTE( iLocals );
@@ -1872,7 +1853,7 @@ static void hb_compFinalizeFunction( HB_COMP_DECL ) /* fixes all last defined fu
           ( pFunc->funFlags & HB_FUNF_FILE_DECL ) == 0 )
       {
          PHB_HVAR pVar;
-
+      
          pVar = pFunc->pLocals;
          while( pVar )
          {
@@ -1880,7 +1861,7 @@ static void hb_compFinalizeFunction( HB_COMP_DECL ) /* fixes all last defined fu
                hb_compWarnUnusedVar( HB_COMP_PARAM, pFunc->szName, pVar->szName, pVar->iDeclLine );
             pVar = pVar->pNext;
          }
-
+      
          pVar = pFunc->pStatics;
          while( pVar )
          {
@@ -1888,7 +1869,7 @@ static void hb_compFinalizeFunction( HB_COMP_DECL ) /* fixes all last defined fu
                hb_compWarnUnusedVar( HB_COMP_PARAM, pFunc->szName, pVar->szName, pVar->iDeclLine );
             pVar = pVar->pNext;
          }
-
+      
          /* Check if the function returned some value
           */
          if( ( pFunc->funFlags & HB_FUNF_WITH_RETURN ) == 0 &&
@@ -1896,7 +1877,7 @@ static void hb_compFinalizeFunction( HB_COMP_DECL ) /* fixes all last defined fu
             hb_compGenWarning( HB_COMP_PARAM, hb_comp_szWarnings, 'W', HB_COMP_WARN_FUN_WITH_NO_RETURN,
                                pFunc->szName, NULL );
       }
-
+      
       if( ! pFunc->bError )
       {
          if( pFunc->wParamCount && ( pFunc->funFlags & HB_FUNF_USES_LOCAL_PARAMS ) == 0 )
@@ -1914,7 +1895,7 @@ static void hb_compFinalizeFunction( HB_COMP_DECL ) /* fixes all last defined fu
              */
             hb_compFixFuncPCode( HB_COMP_PARAM, pFunc );
          }
-
+      
          hb_compPCodeTraceOptimizer( HB_COMP_PARAM );
          hb_compOptimizeJumps( HB_COMP_PARAM );
       }
@@ -2447,7 +2428,7 @@ void hb_compLinePush( HB_COMP_DECL ) /* generates the pcode with the currently c
       if( HB_COMP_PARAM->fDebugInfo && HB_COMP_PARAM->lastModule != HB_COMP_PARAM->currModule )
          hb_compGenModuleName( HB_COMP_PARAM, NULL );
 
-      if( HB_COMP_PARAM->currLine != HB_COMP_PARAM->lastLine )
+      if( HB_COMP_PARAM->currLine != HB_COMP_PARAM->lastLine)
       {
          hb_compGenPCode3( HB_P_LINE, HB_LOBYTE( HB_COMP_PARAM->currLine ),
                                       HB_HIBYTE( HB_COMP_PARAM->currLine ), HB_COMP_PARAM );
@@ -3662,7 +3643,7 @@ void hb_compCodeBlockEnd( HB_COMP_DECL )
    nSize = pCodeblock->nPCodePos + 2;
    if( HB_COMP_PARAM->fDebugInfo )
    {
-      nSize += 3 + strlen( HB_COMP_PARAM->currModule ) + strlen( pFuncName );
+      nSize += 3 + strlen( HB_COMP_PARAM->currModule ) + strlen( pFuncName ) + 3;
       nSize += wLocalsLen;
    }
 
@@ -3716,7 +3697,7 @@ void hb_compCodeBlockEnd( HB_COMP_DECL )
          iLocalPos--;
          pVar = pVar->pNext;
       }
-
+      hb_compLinePush( HB_COMP_PARAM );
    }
 
    hb_compGenPCodeN( pCodeblock->pCode, pCodeblock->nPCodePos, HB_COMP_PARAM );

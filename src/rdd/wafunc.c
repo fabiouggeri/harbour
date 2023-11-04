@@ -296,6 +296,42 @@ HB_USHORT hb_rddFieldExpIndex( AREAP pArea, const char * szField )
 }
 
 /*
+ * Get valid alias name
+ */
+static void hb_rddGetValidAliasName( char * szValidAlias, char *szAlias )
+{
+   char c;
+
+   *szValidAlias = '\0';
+   while( *szAlias == ' ' )
+   {
+      szAlias++;
+   }
+   c = *szAlias;
+   if( c >= 'a' && c <= 'z' )
+   {
+      c -= 'a' - 'A';
+   }
+   if( ( c >= 'A' && c <= 'Z' ) || c == '_' )
+   {
+      while( c != 0 && c != ' ' )
+      {
+         if( c != '_' && ! ( c >= '0' && c <= '9' ) &&
+             ! ( c >= 'A' && c <= 'Z' ) && ! ( c >= 'a' && c <= 'z' ) )
+         {
+            *szValidAlias = '\0';
+            return;
+         }
+         *szValidAlias = *szAlias;
+         szValidAlias++;
+         szAlias++;
+         c = *szAlias;
+      }
+      *szValidAlias = '\0';
+   }
+}
+
+/*
  * Find a WorkArea by the alias, return HB_FAILURE if not found
  */
 HB_ERRCODE hb_rddGetAliasNumber( const char * szAlias, int * iArea )
@@ -328,7 +364,11 @@ HB_ERRCODE hb_rddGetAliasNumber( const char * szAlias, int * iArea )
    }
    else
    {
-      PHB_DYNS pSymAlias = hb_dynsymFindName( szAlias );
+      PHB_DYNS pSymAlias;
+      char     szAliasName[ HB_PATH_MAX + HB_MAX_DRIVE_LENGTH + 6 ];
+      
+      hb_rddGetValidAliasName( szAliasName, (char *) szAlias );
+      pSymAlias = hb_dynsymFindName( szAliasName );
 
       *iArea = pSymAlias ? ( int ) hb_dynsymAreaHandle( pSymAlias ) : 0;
       if( *iArea == 0 )

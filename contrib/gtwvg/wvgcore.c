@@ -817,7 +817,7 @@ static COLORREF hb_wvt_BgColorParam( int iParam )
 
    COLORREF color;
 
-   if( HB_ISNUM( iParam ) )
+   if( HB_ISNUMBER( iParam ) )
       color = ( COLORREF ) hb_parnl( iParam );
    else
    {
@@ -836,7 +836,7 @@ static COLORREF hb_wvt_FgColorParam( int iParam )
 
    COLORREF color;
 
-   if( HB_ISNUM( iParam ) )
+   if( HB_ISNUMBER( iParam ) )
       color = ( COLORREF ) hb_parnl( iParam );
    else
    {
@@ -858,7 +858,7 @@ HB_FUNC( WVT_SETPEN )
    COLORREF crColor;
    HPEN     hPen;
 
-   if( ! HB_ISNUM( 1 ) )
+   if( ! HB_ISNUMBER( 1 ) )
       hb_retl( HB_FALSE );
 
    iPenStyle = hb_parni( 1 );
@@ -887,7 +887,7 @@ HB_FUNC( WVT_SETBRUSH )
    HBRUSH   hBrush;
    LOGBRUSH lb = { 0, 0, 0 };
 
-   if( ! HB_ISNUM( 1 ) )
+   if( ! HB_ISNUMBER( 1 ) )
       hb_retl( HB_FALSE );
 
    lb.lbStyle = hb_parnl( 1 );
@@ -1015,7 +1015,7 @@ HB_FUNC( WVT_DRAWIMAGE )
    iBottom = xy.y - 1 + hb_parvni( 6, 3 );
    iRight  = xy.x - 1 + hb_parvni( 6, 4 );
 
-   if( HB_ISNUM( 5 ) )
+   if( HB_ISNUMBER( 5 ) )
       hb_wvt_gtRenderPicture( iLeft, iTop, ( iRight - iLeft ) + 1, ( iBottom - iTop ) + 1, _s->pGUI->pPicture[ hb_parni( 5 ) - 1 ], hb_parl( 7 ) );
    else
    {
@@ -1127,7 +1127,7 @@ HB_FUNC( WVT_DRAWOUTLINE )
 
    hOldPenGUI = hOldPen = 0;
 
-   if( HB_ISNUM( 5 ) )
+   if( HB_ISNUMBER( 5 ) )
    {
       hPen = CreatePen( hb_parni( 5 ), 0, ( COLORREF ) hb_parnl( 7 ) );
       if( hPen )
@@ -1588,7 +1588,7 @@ HB_FUNC( WVT_DRAWBUTTON )
    HBRUSH   hBrush;
 
    HB_BOOL  bText     = HB_ISCHAR( 5 );
-   HB_BOOL  bImage    = ( HB_ISNUM( 6 ) || HB_ISCHAR( 6 ) );
+   HB_BOOL  bImage    = ( HB_ISNUMBER( 6 ) || HB_ISCHAR( 6 ) );
    int      iFormat   = hb_parni( 7 );
    COLORREF textColor = ( COLORREF ) hb_parnldef( 8, _s->COLORS[ 0 ] );
    COLORREF bkColor   = ( COLORREF ) hb_parnldef( 9, _s->COLORS[ 7 ] );
@@ -1703,7 +1703,7 @@ HB_FUNC( WVT_DRAWBUTTON )
       int iImageWidth  = ( iRight - iLeft + 1 - 8 );
       int iImageHeight = ( iBottom - iTop + 1 - 8 - iTextHeight );
 
-      if( HB_ISNUM( 6 ) )
+      if( HB_ISNUMBER( 6 ) )
       {
          IPicture * iPicture = _s->pGUI->pPicture[ hb_parni( 6 ) - 1 ];
          hb_wvt_gtRenderPicture( iLeft + 4, iTop + 4, iImageWidth, iImageHeight, iPicture, FALSE );
@@ -1829,7 +1829,7 @@ HB_FUNC( WVT_DRAWPICTUREEX )
    POINT xy = { 0, 0 };
    int   iTop, iLeft, iBottom, iRight;
 
-   if( HB_ISNUM( 5 ) )
+   if( HB_ISNUMBER( 5 ) )
    {
       xy    = hb_wvt_gtGetXYFromColRow( hb_parni( 2 ), hb_parni( 1 ) );
       iTop  = xy.y + hb_parvni( 6, 1 );
@@ -2931,7 +2931,7 @@ HB_FUNC( WVT_RESTSCREEN )
 
 HB_FUNC( WVG_GTINFOEX )
 {
-   if( HB_ISPOINTER( 1 ) && HB_ISNUM( 2 ) )
+   if( HB_ISPOINTER( 1 ) && HB_ISNUMBER( 2 ) )
    {
       PHB_GT pGT = hb_gt_ItemBase( hb_param( 1, HB_IT_ANY ) );
 

@@ -70,6 +70,21 @@ typedef unzFile__ *unzFile;
 typedef voidp unzFile;
 #endif
 
+/* Defines para compatibilizar com a LIB do TE, pois ela redefine essas funcoes e o comportamento nao eh exetamente igual */
+#define unzGetGlobalInfo           mz_unzGetGlobalInfo     
+#define unzGetCurrentFileInfo      mz_unzGetCurrentFileInfo
+#define unzGoToFirstFile           mz_unzGoToFirstFile     
+#define unzGoToNextFile            mz_unzGoToNextFile      
+#define unzReadCurrentFile         mz_unzReadCurrentFile   
+#define unzGetLocalExtrafield      mz_unzGetLocalExtrafield
+#define unzCloseCurrentFile        mz_unzCloseCurrentFile  
+#define unzOpenCurrentFilePassword mz_unzOpenCurrentFilePassword
+#define unzGetGlobalComment        mz_unzGetGlobalComment  
+#define unzOpen                    mz_unzOpen              
+#define unzClose                   mz_unzClose             
+#define unzOpenCurrentFile3        mz_unzOpenCurrentFile3  
+#define unzOpenCurrentFile2        mz_unzOpenCurrentFile2  
+
 
 #define UNZ_OK                          (0)
 #define UNZ_END_OF_LIST_OF_FILE         (-100)

@@ -99,7 +99,9 @@ extern HB_EXPORT PHB_SYMB hb_vmProcessDynLibSymbols( PHB_SYMB pSymbols, HB_USHOR
    extern const char *  hb_vmFindModuleSymbolName( PHB_SYMB pSym );
    extern HB_BOOL       hb_vmFindModuleSymbols( PHB_SYMB pSym, PHB_SYMB * pSymbols, HB_USHORT * puiSymbols );
    extern PHB_SYMB      hb_vmGetRealFuncSym( PHB_SYMB pSym );
+
    extern HB_EXPORT void hb_vmSetFunction( PHB_SYMB pOldSym, PHB_SYMB pNewSym );
+   extern HB_EXPORT void hb_vmSetFunctionPointer( PHB_SYMB pOldSym, PHB_FUNC pFunPtr );
    extern HB_EXPORT void hb_vmSetDynFunc( PHB_DYNS pDynSym );
 
    extern void          hb_vmEnumRelease( PHB_ITEM pBase, PHB_ITEM pValue );

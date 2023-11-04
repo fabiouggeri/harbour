@@ -72,7 +72,12 @@ HB_FUNC( STRTRAN )
          HB_SIZE nText = hb_itemGetCLen( pText );
          HB_SIZE nSeek = hb_itemGetCLen( pSeek );
 
-         if( nSeek && nSeek <= nText && nStart > 0 )
+         if( nSeek == 0 )
+         {
+         	/* Clipper 5.2 works this way */
+            hb_retc( "" );
+         }
+         else if( nSeek && nSeek <= nText && nStart > 0 )
          {
             PHB_ITEM pReplace = hb_param( 3, HB_IT_STRING );
             HB_SIZE nReplace = hb_itemGetCLen( pReplace );

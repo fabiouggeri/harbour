@@ -82,6 +82,7 @@
 #include "hbdate.h"
 #include "hb_io.h"
 #include "hbset.h"
+#include "hbapiitm.h"
 
 #if defined( HB_OS_UNIX )
    #include <unistd.h>
@@ -99,6 +100,7 @@
    #if defined( HB_HAS_POLL )
       #include <poll.h>
    #endif
+   #include <dirent.h>
 #endif
 #if ! defined( HB_OS_WIN )
 #  include <errno.h>
@@ -331,6 +333,8 @@
 #endif
 
 static HB_BOOL s_fUseWaitLocks = HB_TRUE;
+
+static char *fixPath(const char *pszFileName, char **pszFree, HB_SIZE maxLen);
 
 #if defined( HB_OS_WIN ) && defined( HB_OS_HAS_DRIVE_LETTER )
 
@@ -1683,6 +1687,87 @@ HB_FHANDLE hb_fsOpen( const char * pszFileName, HB_USHORT uiFlags )
    return hb_fsOpenEx( pszFileName, uiFlags, FC_NORMAL );
 }
 
+char *hb_fsFindInsensitiveCaseFilePath(char *pszFileName, char *pathBuffer) 
+{
+#if defined( HB_OS_UNIX )
+   char *pathName;
+   size_t index = 0;
+   DIR *curDir;
+   HB_BOOL last = HB_FALSE;
+   char *subPath;
+   struct dirent *dirEntry;
+
+   if (pathBuffer) {
+      pathName = pathBuffer;
+   } else {
+      pathName = (char *) hb_xgrab(strlen(pszFileName) + 2);
+   }
+   
+   if (pathName == NULL) {
+      return NULL;
+   }
+
+   if (pszFileName[0] == '/') {
+      curDir = opendir("/");
+      pszFileName = pszFileName + 1;
+   } else {
+      curDir = opendir(".");
+      pathName[0] = '.';
+      pathName[1] = 0;
+      index = 1;
+   }
+
+   subPath = strsep(&pszFileName, "/");
+   while (subPath) {
+      if (!curDir) {
+         if (pathBuffer == NULL) {
+            hb_xfree(pathName);
+         }
+         return NULL;
+      }
+
+      if (last) {
+         closedir(curDir);
+         if (pathBuffer == NULL) {
+            hb_xfree(pathName);
+         }
+         return NULL;
+      }
+
+      pathName[index] = '/';
+      index++;
+      pathName[index] = 0;
+
+      dirEntry = readdir(curDir);
+      while (dirEntry) {
+         if (strcasecmp(subPath, dirEntry->d_name) == 0) {
+            strcpy(pathName + index, dirEntry->d_name);
+            index += strlen(dirEntry->d_name);
+            closedir(curDir);
+            curDir = opendir(pathName);
+            break;
+         }
+         dirEntry = readdir(curDir);
+      }
+
+      if (!dirEntry) {
+         strcpy(pathName + index, subPath);
+         index += strlen(subPath);
+         last = HB_TRUE;
+      }
+
+      subPath = strsep(&pszFileName, "/");
+   }
+
+   if (curDir) {
+      closedir(curDir);
+   }
+   return pathName;
+#else
+   return NULL;
+#endif
+}
+
 HB_FHANDLE hb_fsOpenEx( const char * pszFileName, HB_USHORT uiFlags, HB_FATTR nAttr )
 {
    HB_FHANDLE hFileHandle;
@@ -1733,36 +1818,58 @@ HB_FHANDLE hb_fsOpenEx( const char * pszFileName, HB_USHORT uiFlags, HB_FATTR nA
 
       hb_vmUnlock();
 
-#if defined( HB_OS_DOS )
+   #if defined( HB_OS_DOS )
       if( ( nAttr & ( FC_HIDDEN | FC_SYSTEM ) ) == 0 ||
           access( pszFileName, F_OK ) == 0 )
          attr = 0;
-#endif
+   #endif
 
-#if defined( _MSC_VER )
+   #if defined( _MSC_VER )
       if( share )
          hFileHandle = _sopen( pszFileName, flags, share, mode );
       else
          hFileHandle = _open( pszFileName, flags, mode );
       hb_fsSetIOError( hFileHandle != FS_ERROR, 0 );
-#elif defined( HB_FS_SOPEN )
+   #elif defined( HB_FS_SOPEN )
       if( share )
          hFileHandle = sopen( pszFileName, flags, share, mode );
       else
          hFileHandle = open( pszFileName, flags, mode );
       hb_fsSetIOError( hFileHandle != FS_ERROR, 0 );
-#else
+   #else
       HB_FAILURE_RETRY( hFileHandle, open( pszFileName, flags | share, mode ) );
-#endif
+   #endif
+   
+   if ((hb_fsOsError() == 2 || hb_fsOsError() == 3) && hb_setGetRetryFileCase()) {
+      char pathBuffer[HB_PATH_MAX];
+      char *pathFound = hb_fsFindInsensitiveCaseFilePath((char *) pszFileName, pathBuffer);
+      if (pathFound) {
+         #if defined( _MSC_VER )
+            if( share )
+               hFileHandle = _sopen( pathFound, flags, share, mode );
+            else
+               hFileHandle = _open( pathFound, flags, mode );
+            hb_fsSetIOError( hFileHandle != FS_ERROR, 0 );
+         #elif defined( HB_FS_SOPEN )
+            if( share )
+               hFileHandle = sopen( pathFound, flags, share, mode );
+            else
+               hFileHandle = open( pathFound, flags, mode );
+            hb_fsSetIOError( hFileHandle != FS_ERROR, 0 );
+         #else
+            HB_FAILURE_RETRY( hFileHandle, open( pathFound, flags | share, mode ) );
+         #endif
+      }
+   }
 
-#if defined( HB_OS_DOS )
-      if( attr != 0 && hFileHandle != ( HB_FHANDLE ) FS_ERROR )
-#     if defined( __DJGPP__ ) || defined( __BORLANDC__ )
-         _chmod( pszFileName, 1, attr );
-#     else
-         _dos_setfileattr( pszFileName, attr );
-#     endif
-#endif
+   #if defined( HB_OS_DOS )
+         if( attr != 0 && hFileHandle != ( HB_FHANDLE ) FS_ERROR && pszFileName != NULL)
+      #  if defined( __DJGPP__ ) || defined( __BORLANDC__ )
+            _chmod( pszFileName, 1, attr );
+      #  else
+            _dos_setfileattr( pszFileName, attr );
+      #  endif
+   #endif
 
       hb_vmLock();
 
@@ -4016,6 +4123,13 @@ HB_BOOL hb_fsChDir( const char * pszDirName )
       hb_vmUnlock();
 
       fResult = ( chdir( pszDirName ) == 0 );
+      if (! fResult && hb_setGetRetryFileCase()) {
+         char pathBuffer[HB_PATH_MAX];
+         char *pathFound = hb_fsFindInsensitiveCaseFilePath((char *) pszDirName, pathBuffer);
+         if (pathFound) {
+            fResult = ( chdir( pathFound ) == 0 );
+         }
+      }
       hb_fsSetIOError( fResult, 0 );
 
       hb_vmLock();
@@ -4860,7 +4974,7 @@ const char * hb_fsNameConv( const char * pszFileName, char ** pszFree )
       *pszFree = NULL;
 
    if( ! hb_vmIsReady() )
-      return pszFileName;
+      return fixPath(pszFileName, pszFree, 0);
 
    fTrim = hb_setGetTrimFileName();
    fEncodeCP = hb_osUseCP();
@@ -4973,7 +5087,7 @@ const char * hb_fsNameConv( const char * pszFileName, char ** pszFree )
       }
    }
 
-   return pszFileName;
+   return fixPath(pszFileName, pszFree, HB_PATH_MAX);
 }
 
 #if defined( HB_OS_WIN )
@@ -5097,7 +5211,7 @@ HB_WCHAR * hb_fsNameConvU16( const char * pszFileName )
          hb_xfree( pszExt );
    }
 
-   lpwFileName = hb_cdpStrDupU16( cdp, HB_CDP_ENDIAN_NATIVE, pszFileName );
+   lpwFileName = hb_cdpStrDupU16( cdp, HB_CDP_ENDIAN_NATIVE, fixPath(pszFileName, &pszBuffer, HB_PATH_MAX) );
    if( pszBuffer )
       hb_xfree( pszBuffer );
 
@@ -5136,4 +5250,188 @@ static HB_BOOL hb_fsDisableWaitLocks( int iSet )
 HB_FUNC( HB_DISABLEWAITLOCKS )
 {
    hb_retl( hb_fsDisableWaitLocks( hb_parldef( 1, -1 ) ) );
+}
+
+static HB_BOOL startsWith(const char *str, HB_SIZE strLen, const char *prefix, HB_SIZE prefixLen, HB_BOOL bIgnoreCase) {
+#if defined( HB_OS_WIN )
+   return hb_cdpicmp( str, strLen, prefix, prefixLen, hb_vmCDP(), HB_FALSE ) == 0;
+#else
+   if (bIgnoreCase) {
+      return hb_cdpicmp( str, strLen, prefix, prefixLen, hb_vmCDP(), HB_FALSE ) == 0;
+   } else {
+      return hb_cdpcmp( str, strLen, prefix, prefixLen, hb_vmCDP(), HB_FALSE ) == 0;
+   }
+#endif
+}
+
+static HB_PATH_FIX *findFix(HB_PATH_FIX *pFirstFix, const char *pszFileName, HB_SIZE fileNameLen) {
+   HB_PATH_FIX *fix;
+   if (pFirstFix != NULL) {
+      for (fix = pFirstFix; fix != NULL; fix = fix->next) {
+         if (startsWith( pszFileName, fileNameLen, hb_itemGetCPtr( fix->pSource ), hb_itemGetCLen( fix->pSource ), fix->bIgnoreCase )) {
+            return fix;
+         }
+      }
+   }
+   return NULL;
+}
+
+static char *fixPath(const char *pszFileName, char **pszFree, HB_SIZE freeBufferLen) {
+   HB_PATH_FIX *pFirstFix = hb_setGetFirstPathFix();
+   HB_SIZE fileNameLen;
+   HB_PATH_FIX *fix;
+   char *pszFixed;
+   
+   if (pFirstFix == NULL) {
+      return (char *) pszFileName;
+   }
+   fileNameLen = (HB_SIZE) strlen( pszFileName );
+   fix = findFix( pFirstFix, pszFileName, fileNameLen );
+   if (fix != NULL) {
+      HB_SIZE sourceLen = hb_itemGetCLen( fix->pSource );
+      HB_SIZE targetLen = hb_itemGetCLen( fix->pTarget );
+      HB_SIZE fixedLen = targetLen + fileNameLen - sourceLen;
+      if (pszFree != NULL) {
+         if (*pszFree != NULL) {
+            /* Realocate buffer because it is too small */ 
+            if (fixedLen >= freeBufferLen) {
+               pszFixed = *pszFree = (char *) hb_xrealloc(*pszFree, fixedLen + 1);
+            /* Buffer size enough */ 
+            } else {
+               pszFixed = *pszFree;
+            }
+         } else {
+            pszFixed = *pszFree = (char *) hb_xgrab(fixedLen + 1);
+         }
+         memmove(&pszFixed[targetLen], &pszFileName[sourceLen], fileNameLen - sourceLen);
+         memcpy(pszFixed, hb_itemGetCPtr( fix->pTarget ), targetLen);
+         pszFixed[fixedLen] = '\0';
+      } else {
+         pszFixed = (char *) pszFileName;
+      }
+   } else {
+      pszFixed = (char *) pszFileName;
+   }
+   return pszFixed;
+}
+
+PHB_ITEM hb_fsFindPathFix(HB_PATH_FIX *pFirstFix, PHB_ITEM pPath) {
+   HB_PATH_FIX *fix = findFix( pFirstFix, hb_itemGetCPtr( pPath ), hb_itemGetCLen( pPath ) );
+   return fix != NULL ? fix->pTarget : NULL;
+}
+
+void hb_fsCleanPathFixes(HB_PATH_FIX **pFirstFix) {
+   HB_PATH_FIX *currentFix;
+   HB_PATH_FIX *nextFix;
+   
+   if ( pFirstFix == NULL) {
+      return;
+   }
+   currentFix = *pFirstFix;
+   while (currentFix != NULL) {
+      nextFix = currentFix->next;
+      hb_itemRelease(currentFix->pOriginalSource);
+      hb_itemRelease(currentFix->pSource);
+      hb_itemRelease(currentFix->pOriginalTarget);
+      hb_itemRelease(currentFix->pTarget);
+      hb_xfree( currentFix );
+      currentFix = nextFix;
+   }
+   *pFirstFix = NULL;
+}
+
+static void removeFixPath(HB_PATH_FIX **pFirstFix, PHB_ITEM pSrcPath) {
+   HB_PATH_FIX *currentFix;
+   HB_PATH_FIX *previousFix;
+   const char *pathRemove;
+   char *szTmp;
+
+   if (pFirstFix == NULL) {
+      return;
+   }
+
+   pathRemove = hb_fsNameConv( hb_itemGetCPtr( pSrcPath ), &szTmp );
+   currentFix = *pFirstFix;
+   previousFix = NULL;
+   while (currentFix != NULL) {
+      if (currentFix->bIgnoreCase) {
+         if ( hb_stricmp( pathRemove, hb_itemGetCPtr( currentFix->pSource ) ) == 0 ) {
+            if (previousFix != NULL) {
+               previousFix->next = currentFix->next;
+            } else {
+               *pFirstFix = currentFix->next;
+            }
+            hb_xfree( currentFix );
+            break;
+         }
+      } else if ( strcmp( pathRemove, hb_itemGetCPtr( currentFix->pSource ) ) == 0 ) {
+         if (previousFix != NULL) {
+            previousFix->next = currentFix->next;
+         } else {
+            *pFirstFix = currentFix->next;
+         }
+         hb_xfree( currentFix );
+         break;
+      }
+      previousFix = currentFix;
+      currentFix = currentFix->next;
+   }
+   if (szTmp != NULL) {
+      hb_xfree( szTmp );
+   }
+}
+
+static void addFixPath(HB_PATH_FIX **pFirstFix, PHB_ITEM pSrcPath, PHB_ITEM pDstPath, HB_BOOL bIgnoreCase) {
+   HB_PATH_FIX *fix;
+   
+   if (pFirstFix == NULL) {
+      return;
+   }
+   
+   fix = (HB_PATH_FIX *) hb_xgrab( sizeof(HB_PATH_FIX) );
+   if (fix != NULL) {
+      char *szTmp;
+      /* source */
+      fix->pOriginalSource = hb_itemNew( pSrcPath );
+      hb_fsNameConv( hb_itemGetCPtr( pSrcPath ), &szTmp );
+      fix->pSource = szTmp != NULL ? hb_itemPutCPtr( NULL, szTmp ) : hb_itemNew( pSrcPath );
+
+      /* dest */
+      fix->pOriginalTarget = hb_itemNew( pDstPath );
+      hb_fsNameConv( hb_itemGetCPtr( pDstPath ), &szTmp );
+      fix->pTarget = szTmp != NULL ? hb_itemPutCPtr( NULL, szTmp ) : hb_itemNew( pDstPath );
+      
+      fix->bIgnoreCase = bIgnoreCase;
+      fix->next = *pFirstFix;
+      *pFirstFix = fix;
+   }
+}
+
+void hb_fsSetPathFix(HB_PATH_FIX **pFirstFix, PHB_ITEM pSrcPath, PHB_ITEM pDstPath, HB_BOOL bIgnoreCase) {
+
+   if ( pSrcPath != NULL && HB_IS_STRING( pSrcPath ) ) {
+      if ( pDstPath != NULL && HB_IS_STRING( pDstPath ) && ! hb_strEmpty( hb_itemGetCPtr( pDstPath ), hb_itemGetCLen( pDstPath ) ) ) {
+         removeFixPath( pFirstFix, pSrcPath );
+         addFixPath( pFirstFix, pSrcPath, pDstPath, bIgnoreCase );
+      } else {
+         removeFixPath( pFirstFix, pSrcPath );
+      }
+   }
+}
+
+HB_FUNC(HB_FIXEDPATH) {
+   PHB_ITEM pPath = hb_param( 1, HB_IT_STRING );
+
+   if (pPath != NULL) {
+      const char *srcPath = hb_itemGetCPtr( pPath );
+      char *fixedBuffer = NULL;
+      fixedBuffer = fixPath( srcPath, &fixedBuffer, 0 );
+      if (fixedBuffer != srcPath) {
+         hb_itemReturnRelease( hb_itemPutCPtr( NULL, fixedBuffer ) );
+      } else {
+         hb_itemReturn( pPath );
+      }
+   } else {
+      hb_retc("");
+   }
 }

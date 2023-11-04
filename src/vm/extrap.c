@@ -86,6 +86,8 @@
 
 #if defined( HB_OS_WIN ) && ! defined( __TINYC__ )
 
+static PVOID s_exceptionHandler = NULL;
+
 static LONG WINAPI hb_winExceptionHandler( struct _EXCEPTION_POINTERS * pExceptionInfo )
 {
    char errmsg[ 8192 ];
@@ -569,6 +571,7 @@ void hb_vmSetExceptionHandler( void )
 #if defined( HB_OS_WIN ) && ! defined( HB_OS_WIN_CE ) && ! defined( __TINYC__ )
    {
       LPTOP_LEVEL_EXCEPTION_FILTER ef = SetUnhandledExceptionFilter( hb_winExceptionHandler );
+      s_exceptionHandler = AddVectoredExceptionHandler( 1, hb_winExceptionHandler );
       HB_SYMBOL_UNUSED( ef );
    }
 #elif defined( HB_OS_OS2 ) /* Add OS2TermHandler to this thread's chain of exception handlers */
@@ -609,7 +612,12 @@ void hb_vmSetExceptionHandler( void )
 
 void hb_vmUnsetExceptionHandler( void )
 {
-#if defined( HB_OS_OS2 ) /* Add OS2TermHandler to this thread's chain of exception handlers */
+#if defined( HB_OS_WIN ) && ! defined( HB_OS_WIN_CE ) && ! defined( __TINYC__ )
+   if (s_exceptionHandler != NULL) {
+      RemoveVectoredExceptionHandler( s_exceptionHandler );
+   }
+   SetUnhandledExceptionFilter( NULL );
+#elif defined( HB_OS_OS2 ) /* Add OS2TermHandler to this thread's chain of exception handlers */
    {
       APIRET rc;                             /* Return code                   */
 

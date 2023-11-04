@@ -98,7 +98,10 @@
  *    HB_DBG_VMQUIT
  */
 
-/* AddToArray( <pItem>, <pReturn>, <uiPos> )
+/* Debugger level */ 
+static int s_debuggerLevel = 0;
+
+/*
  * Add <pItem> to array <pReturn> at pos <uiPos>
  */
 static void AddToArray( PHB_ITEM pItem, PHB_ITEM pReturn, HB_SIZE nPos )
@@ -122,7 +125,17 @@ static void AddToArray( PHB_ITEM pItem, PHB_ITEM pReturn, HB_SIZE nPos )
       hb_itemArrayPut( pReturn, nPos, pItem );
 }
 
-/* __dbgVMStkGCount() --> <nVars>
+void hb_dbg_SetDebuggerLevel(int level) 
+{
+   s_debuggerLevel = level;
+}
+
+int hb_dbg_GetDebuggerLevel() 
+{
+   return s_debuggerLevel;
+}
+
+/*
  * Returns the length of the global stack
  */
 HB_FUNC( __DBGVMSTKGCOUNT )

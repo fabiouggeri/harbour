@@ -1541,7 +1541,7 @@ HB_FUNC( HB_THREADWAIT )
    {
       HB_BOOL fAll;
 
-      if( HB_ISNUM( 2 ) )
+      if( HB_ISNUMBER( 2 ) )
       {
          double dTimeOut = hb_parnd( 2 );
          ulMilliSec = dTimeOut > 0 ? ( HB_ULONG ) ( dTimeOut * 1000 ) : 0;

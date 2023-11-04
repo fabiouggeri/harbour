@@ -38,10 +38,10 @@ typedef struct
  */
 static const HB_FUNCINFO s_stdFunc[] =
 {
-   { "AADD"      , 2,  2 },
+   { "AADD"      , 2, -1 },
    { "ABS"       , 1,  1 },
    { "ASC"       , 1,  1 },
-   { "AT"        , 2,  2 },
+   { "AT"        , 2, -1 },
    { "BOF"       , 0,  0 },
    { "BREAK"     , 0,  1 },
    { "CDOW"      , 1,  1 },
@@ -94,8 +94,8 @@ static const HB_FUNCINFO s_stdFunc[] =
    { "SETPOSBS"  , 0,  0 },
    { "SPACE"     , 1,  1 },
    { "SQRT"      , 1,  1 },
-   { "STR"       , 1,  3 },
-   { "SUBSTR"    , 2,  3 },
+   { "STR"       , 1, -1 },
+   { "SUBSTR"    , 2, -1 },
    { "TIME"      , 0,  0 },
    { "TRANSFORM" , 2,  2 },
    { "TRIM"      , 1,  1 },

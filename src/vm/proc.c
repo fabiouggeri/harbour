@@ -55,8 +55,16 @@
 #include "hbapiitm.h"
 #include "hbstack.h"
 #include "hbvm.h"
+#include "hbapidbg.h"
 
 HB_FUNC( HB_METHODNAME )
+{
+   char szName[ HB_SYMBOL_NAME_LEN + HB_SYMBOL_NAME_LEN + 5 ];
+
+   hb_retc( hb_procname( hb_parni( 1 )  + ( hb_dbg_GetDebuggerLevel() > 0 ? hb_dbg_ProcLevel() - hb_dbg_GetDebuggerLevel() : 1 ), szName, HB_TRUE ) );
+}
+
+HB_FUNC( __DBGMETHODNAME )
 {
    char szName[ HB_SYMBOL_NAME_LEN + HB_SYMBOL_NAME_LEN + 5 ];
 
@@ -67,10 +75,27 @@ HB_FUNC( PROCNAME )
 {
    char szName[ HB_SYMBOL_NAME_LEN + HB_SYMBOL_NAME_LEN + 5 ];
 
+   hb_retc( hb_procname( hb_parni( 1 ) + ( hb_dbg_GetDebuggerLevel() > 0 ? hb_dbg_ProcLevel() - hb_dbg_GetDebuggerLevel() : 1 ), szName, HB_FALSE ) );
+}
+
+HB_FUNC( __DBGPROCNAME )
+{
+   char szName[ HB_SYMBOL_NAME_LEN + HB_SYMBOL_NAME_LEN + 5 ];
+
    hb_retc( hb_procname( hb_parni( 1 ) + 1, szName, HB_FALSE ) );
 }
 
 HB_FUNC( PROCLINE )
+{
+   HB_ISIZ nOffset = hb_stackBaseProcOffset( hb_parni( 1 ) + ( hb_dbg_GetDebuggerLevel() > 0 ? hb_dbg_ProcLevel() - hb_dbg_GetDebuggerLevel() : 1 ) );
+
+   if( nOffset > 0 )
+      hb_retni( hb_stackItem( nOffset )->item.asSymbol.stackstate->uiLineNo );
+   else
+      hb_retni( 0 );
+}
+
+HB_FUNC( __DBGPROCLINE )
 {
    HB_ISIZ nOffset = hb_stackBaseProcOffset( hb_parni( 1 ) + 1 );
 
@@ -81,6 +106,51 @@ HB_FUNC( PROCLINE )
 }
 
 #ifdef HB_CLP_UNDOC
+
+HB_FUNC( __DBGPROCFILE )
+{
+#ifndef HB_CLP_STRICT
+   PHB_SYMB pSym = NULL;
+
+   if( HB_ISSYMBOL( 1 ) )
+   {
+      pSym = hb_itemGetSymbol( hb_param( 1, HB_IT_SYMBOL ) );
+   }
+   else if( HB_ISCHAR( 1 ) )
+   {
+      PHB_DYNS pDynSym = hb_dynsymFindName( hb_parc( 1 ) );
+
+      if( pDynSym )
+         pSym = pDynSym->pSymbol;
+   }
+   else
+   {
+      HB_ISIZ nOffset = hb_stackBaseProcOffset( hb_parni( 1 ) + 1 );
+
+      if( nOffset > 0 )
+      {
+         PHB_ITEM pBase = hb_stackItem( nOffset );
+
+         pSym = pBase->item.asSymbol.value;
+         if( pSym == &hb_symEval || pSym->pDynSym == hb_symEval.pDynSym )
+         {
+            PHB_ITEM pSelf = hb_stackItem( nOffset + 1 );
+
+            if( HB_IS_BLOCK( pSelf ) )
+               pSym = pSelf->item.asBlock.value->pDefSymb;
+            else if( pBase->item.asSymbol.stackstate->uiClass )
+               pSym = hb_clsMethodSym( pBase );
+         }
+         else if( pBase->item.asSymbol.stackstate->uiClass )
+            pSym = hb_clsMethodSym( pBase );
+      }
+   }
+   hb_retc( hb_vmFindModuleSymbolName( hb_vmGetRealFuncSym( pSym ) ) );
+#else
+   hb_retc_null();
+#endif
+}
+
 
 /* NOTE: Clipper undocumented function, which always returns an empty
          string. [vszakats] */
@@ -103,7 +173,7 @@ HB_FUNC( PROCFILE )
    }
    else
    {
-      HB_ISIZ nOffset = hb_stackBaseProcOffset( hb_parni( 1 ) + 1 );
+      HB_ISIZ nOffset = hb_stackBaseProcOffset( hb_parni( 1 ) + ( hb_dbg_GetDebuggerLevel() > 0 ? hb_dbg_ProcLevel() - hb_dbg_GetDebuggerLevel() : 1 ) );
 
       if( nOffset > 0 )
       {

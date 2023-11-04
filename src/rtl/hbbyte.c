@@ -49,7 +49,7 @@
 
 static HB_BOOL hb_numParam( int iParam, HB_MAXINT * plNum )
 {
-   if( HB_ISNUM( iParam ) )
+   if( HB_ISNUMBER( iParam ) )
    {
       *plNum = hb_parnint( iParam );
       return HB_TRUE;

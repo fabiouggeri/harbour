@@ -108,7 +108,7 @@ HB_FUNC( WVG_SENDMESSAGE )
 
    hb_retnl( ( HB_ULONG ) SendMessage( ( HWND ) ( HB_PTRUINT ) hb_parnint( 1 ),
                                        ( UINT ) hb_parni( 2 ),
-                                       ( ! HB_ISNUM( 3 ) ? 0 : ( WPARAM ) hb_parnint( 3 ) ),
+                                       ( ! HB_ISNUMBER( 3 ) ? 0 : ( WPARAM ) hb_parnint( 3 ) ),
                                        ( lpText ? ( LPARAM ) lpText : ( LPARAM ) hb_parnint( 4 ) ) ) );
    if( lpText )
    {
@@ -235,7 +235,7 @@ HB_FUNC( WVG_GETDLGITEMTEXT )
 HB_FUNC( WVG_CHECKDLGBUTTON )
 {
    hb_retl( CheckDlgButton( ( HWND ) ( HB_PTRUINT ) hb_parnint( 1 ), hb_parni( 2 ),
-                            ( UINT ) ( HB_ISNUM( 3 ) ? hb_parni( 3 ) : hb_parl( 3 ) ) ) );
+                            ( UINT ) ( HB_ISNUMBER( 3 ) ? hb_parni( 3 ) : hb_parl( 3 ) ) ) );
 }
 
 HB_FUNC( WVG_ISDLGBUTTONCHECKED )
@@ -259,7 +259,7 @@ HB_FUNC( WVG_GETDLGITEM )
 
 HB_FUNC( WVG_MESSAGEBOX )
 {
-   HWND   hWnd = HB_ISNUM( 1 ) ? ( HWND ) ( HB_PTRUINT ) hb_parnint( 1 ) : GetActiveWindow();
+   HWND   hWnd = HB_ISNUMBER( 1 ) ? ( HWND ) ( HB_PTRUINT ) hb_parnint( 1 ) : GetActiveWindow();
    void * hMsg;
    void * hTitle;
 
@@ -292,7 +292,7 @@ HB_FUNC( WVG_LOADICON )
 {
    HICON hIcon;
 
-   if( HB_ISNUM( 1 ) )
+   if( HB_ISNUMBER( 1 ) )
    {
       hIcon = LoadIcon( ( HINSTANCE ) wvg_hInstance(), MAKEINTRESOURCE( hb_parni( 1 ) ) );
    }
@@ -322,21 +322,21 @@ HB_FUNC( WVG_LOADIMAGE )
    switch( iSource )
    {
       case 0:   /* Image from resource by numeric id */
-         if( HB_ISNUM( 3 ) && hb_parni( 3 ) == IMAGE_ICON )
+         if( HB_ISNUMBER( 3 ) && hb_parni( 3 ) == IMAGE_ICON )
             hImage = LoadIcon( ( HINSTANCE ) wvg_hInstance(), MAKEINTRESOURCE( hb_parni( 1 ) ) );
          else
             hImage = LoadBitmap( ( HINSTANCE ) wvg_hInstance(), MAKEINTRESOURCE( hb_parni( 1 ) ) );
          break;
 
       case 1:   /* image from resource by name */
-         if( HB_ISNUM( 3 ) && hb_parni( 3 ) == IMAGE_ICON )
+         if( HB_ISNUMBER( 3 ) && hb_parni( 3 ) == IMAGE_ICON )
             hImage = LoadIcon( ( HINSTANCE ) wvg_hInstance(), lpBuffer );
          else
             hImage = LoadBitmap( ( HINSTANCE ) wvg_hInstance(), lpBuffer );
          break;
 
       case 2:   /* Image from disk file */
-         if( HB_ISNUM( 3 ) && hb_parni( 3 ) == IMAGE_ICON )
+         if( HB_ISNUMBER( 3 ) && hb_parni( 3 ) == IMAGE_ICON )
             hImage = ( HICON ) LoadImage( ( HINSTANCE ) NULL, lpBuffer, IMAGE_ICON, hb_parni( 4 ), hb_parni( 5 ), LR_LOADFROMFILE );
          else
             hImage = ( HBITMAP ) LoadImage( ( HINSTANCE ) NULL, lpBuffer, IMAGE_BITMAP, hb_parni( 4 ), hb_parni( 5 ), LR_LOADFROMFILE );
@@ -546,11 +546,11 @@ HB_FUNC( WVG_TRACKPOPUPMENU )
    UINT  uFlags = hb_parnldef( 2, TPM_CENTERALIGN | TPM_RETURNCMD );
    int   x      = hb_parni( 3 );
    int   y      = hb_parni( 4 );
-   HWND  hWnd   = HB_ISNUM( 5 ) ? ( HWND ) ( HB_PTRUINT ) hb_parnint( 5 ) : GetActiveWindow();
+   HWND  hWnd   = HB_ISNUMBER( 5 ) ? ( HWND ) ( HB_PTRUINT ) hb_parnint( 5 ) : GetActiveWindow();
 
    POINT xy = { 0, 0 };
 
-   if( ! HB_ISNUM( 3 ) )
+   if( ! HB_ISNUMBER( 3 ) )
       GetCursorPos( &xy );
    else
    {
@@ -571,7 +571,7 @@ HB_FUNC( WVG_CHOOSECOLOR )
       crCustClr[ i ] = ( HB_ISARRAY( 2 ) ? ( COLORREF ) hb_parvnl( 2, i + 1 ) : GetSysColor( COLOR_BTNFACE ) );
 
    cc.lStructSize  = sizeof( CHOOSECOLOR );
-   cc.hwndOwner    = HB_ISNUM( 4 ) ? ( HWND ) ( HB_PTRUINT ) hb_parnint( 4 ) : NULL;
+   cc.hwndOwner    = HB_ISNUMBER( 4 ) ? ( HWND ) ( HB_PTRUINT ) hb_parnint( 4 ) : NULL;
    cc.rgbResult    = ( COLORREF ) hb_parnl( 1 );
    cc.lpCustColors = crCustClr;
    cc.Flags        = ( WORD ) hb_parnldef( 3, CC_ANYCOLOR | CC_RGBINIT | CC_FULLOPEN );
@@ -780,8 +780,8 @@ HB_FUNC( WVG_CREATEWINDOWEX )
                           hb_parni( 5 ), hb_parni( 6 ),
                           hb_parni( 7 ), hb_parni( 8 ),
                           ( HWND ) ( HB_PTRUINT ) hb_parnint( 9 ),
-                          HB_ISNUM( 10 ) ? ( HMENU ) ( HB_PTRUINT ) hb_parnint( 10 ) : NULL,
-                          HB_ISNUM( 11 ) ? ( HINSTANCE ) ( HB_PTRUINT ) hb_parnint( 11 ) : ( HINSTANCE ) wvg_hInstance(),
+                          HB_ISNUMBER( 10 ) ? ( HMENU ) ( HB_PTRUINT ) hb_parnint( 10 ) : NULL,
+                          HB_ISNUMBER( 11 ) ? ( HINSTANCE ) ( HB_PTRUINT ) hb_parnint( 11 ) : ( HINSTANCE ) wvg_hInstance(),
                           NULL );
    hb_strfree( hClassName );
    hb_strfree( hWinName );
@@ -1033,7 +1033,7 @@ HB_FUNC( WVG_SETLAYEREDWINDOWATTRIBUTES )
       if( pfnLayered )
       {
          HWND     hWnd = hbwapi_par_raw_HWND( 1 );
-         COLORREF cr   = HB_ISNUM( 2 ) ? hbwapi_par_COLORREF( 2 ) : RGB( 255, 255, 255 );
+         COLORREF cr   = HB_ISNUMBER( 2 ) ? hbwapi_par_COLORREF( 2 ) : RGB( 255, 255, 255 );
 
          SetWindowLong( hWnd, GWL_EXSTYLE, GetWindowLong( hWnd, GWL_EXSTYLE ) | WS_EX_LAYERED );
 

@@ -655,7 +655,7 @@ HB_FUNC( WVG_TREEVIEW_ADDITEM )
                                              TVIS_OVERLAYMASK | TVIS_STATEIMAGEMASK | TVIS_USERMASK;
 
    HB_WIN_V_UNION( tvis, item.state ) = 0;        /* TVI_BOLD */
-   tvis.hParent = HB_ISNUM( 2 ) ? ( HTREEITEM ) wvg_parhandle( 2 ) : NULL;
+   tvis.hParent = HB_ISNUMBER( 2 ) ? ( HTREEITEM ) wvg_parhandle( 2 ) : NULL;
    HB_WIN_V_UNION( tvis, item.pszText ) = ( LPTSTR ) HB_PARSTRDEF( 3, &hText, NULL );
 
    hb_retnint( ( HB_PTRUINT ) TreeView_InsertItem( wvg_parhwnd( 1 ), &tvis ) );
@@ -821,7 +821,7 @@ HB_FUNC( WVG_CHOOSEFONT )
       HB_STRNCPY( lf.lfFaceName, HB_PARSTR( 3, &hText, NULL ), HB_SIZEOFARRAY( lf.lfFaceName ) - 1 );
       hb_strfree( hText );
    }
-   if( HB_ISNUM( 4 ) && hb_parnl( 4 ) )
+   if( HB_ISNUMBER( 4 ) && hb_parnl( 4 ) )
    {
       HDC hdc = GetDC( hWnd );
       PointSize = -MulDiv( ( LONG ) hb_parnl( 4 ), GetDeviceCaps( hdc, LOGPIXELSY ), 72 );
@@ -952,11 +952,11 @@ HB_FUNC( WVG_FONTCREATE )
  */
 HB_FUNC( WVG_POINTSIZETOHEIGHT )
 {
-   HDC hdc = HB_ISNUM( 1 ) ? wvg_parhdc( 1 ) : GetDC( GetDesktopWindow() );
+   HDC hdc = HB_ISNUMBER( 1 ) ? wvg_parhdc( 1 ) : GetDC( GetDesktopWindow() );
 
    hb_retnl( ( long ) -MulDiv( ( LONG ) hb_parnl( 2 ), GetDeviceCaps( hdc, LOGPIXELSY ), 72 ) );
 
-   if( ! HB_ISNUM( 1 ) )
+   if( ! HB_ISNUMBER( 1 ) )
       ReleaseDC( GetDesktopWindow(), hdc );
 }
 
@@ -965,11 +965,11 @@ HB_FUNC( WVG_POINTSIZETOHEIGHT )
  */
 HB_FUNC( WVG_HEIGHTTOPOINTSIZE )
 {
-   HDC hdc = HB_ISNUM( 1 ) ? wvg_parhdc( 1 ) : GetDC( GetDesktopWindow() );
+   HDC hdc = HB_ISNUMBER( 1 ) ? wvg_parhdc( 1 ) : GetDC( GetDesktopWindow() );
 
    hb_retnl( ( long ) -MulDiv( ( LONG ) hb_parnl( 2 ), 72, GetDeviceCaps( hdc, LOGPIXELSY ) ) );
 
-   if( ! HB_ISNUM( 1 ) )
+   if( ! HB_ISNUMBER( 1 ) )
       ReleaseDC( GetDesktopWindow(), hdc );
 }
 

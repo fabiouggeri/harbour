@@ -83,3 +83,18 @@ HB_FUNC( LEN )
 
    hb_errRT_BASE_SubstR( EG_ARG, 1111, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
 }
+
+HB_FUNC(HB_INSTRINGORARRAY) {
+   PHB_ITEM pItem1 = hb_param(1, HB_IT_ANY);
+   PHB_ITEM pItem2 = hb_param(2, HB_IT_ANY);
+
+   if (HB_IS_STRING(pItem1) && HB_IS_STRING(pItem2)) {
+      hb_retl(hb_strAt(hb_itemGetCPtr(pItem1), hb_itemGetCLen(pItem1), hb_itemGetCPtr(pItem2), hb_itemGetCLen(pItem2)) != 0);
+   } else if (HB_IS_ARRAY(pItem2)) {
+      hb_retl(hb_arrayScan(pItem2, pItem1, NULL, NULL, HB_TRUE) > 0);
+   } else if (HB_IS_HASH(pItem2) && (HB_IS_HASHKEY(pItem1) || hb_hashLen(pItem1) == 1)) {
+      hb_retl(hb_hashScan(pItem2, pItem1, NULL));
+   } else {
+      hb_retl(HB_FALSE);
+   }
+}

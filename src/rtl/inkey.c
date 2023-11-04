@@ -103,6 +103,10 @@ HB_FUNC( __KEYBOARD )
 
    if( HB_ISCHAR( 1 ) )
       hb_inkeySetText( hb_parc( 1 ), hb_parclen( 1 ), HB_FALSE );
+#ifdef _XHB_COMPAT_
+   else if( HB_ISNUM( 1 ) )
+      hb_inkeyPut( hb_parni(1) );
+#endif
 }
 
 HB_FUNC( HB_KEYCLEAR )

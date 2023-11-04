@@ -52,7 +52,11 @@ HB_FUNC( XTOC )
 
    if( pItem )
    {
-      if( HB_IS_DATE( pItem ) )
+      if ( HB_IS_STRING( pItem ) )
+      {
+        hb_retc( hb_itemGetCPtr( pItem ));
+      }
+      else if( HB_IS_DATE( pItem ) )
       {
          char szDate[ 9 ];
          hb_retc( hb_itemGetDS( pItem, szDate ) );

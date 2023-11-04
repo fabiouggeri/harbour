@@ -252,24 +252,22 @@ HB_FUNC( ADDMONTH )
    int iYear, iMonth, iDay, iNum, iDays;
    HB_BOOL fTimeStamp = HB_FALSE;
 
-   if( HB_ISNUM( 1 ) )
-   {
+   if( HB_ISTIMESTAMP( 1 ) ) {
+      fTimeStamp = HB_TRUE;
+      hb_partdt( &lJulian, &lMillisec, 1 );
+      hb_dateDecode( lJulian, &iYear, &iMonth, &iDay );
+      iNum = hb_parni( 2 );
+   } else if( HB_ISDATE( 1 ) ) {
+      hb_dateDecode( hb_pardl( 1 ), &iYear, &iMonth, &iDay );
+      iNum = hb_parni( 2 );
+   } else if( HB_ISNUM( 1 ) ) {
       iNum = hb_parni( 1 );
       hb_dateToday( &iYear, &iMonth, &iDay );
-   }
-   else
-   {
-      if( HB_ISTIMESTAMP( 1 ) )
-      {
-         fTimeStamp = HB_TRUE;
-         hb_partdt( &lJulian, &lMillisec, 1 );
-         hb_dateDecode( lJulian, &iYear, &iMonth, &iDay );
-      }
-      else if( HB_ISDATE( 1 ) )
-         hb_dateDecode( hb_pardl( 1 ), &iYear, &iMonth, &iDay );
-      else
-         hb_dateToday( &iYear, &iMonth, &iDay );
-      iNum = hb_parni( 2 );
+   } else {
+//      hb_dateToday( &iYear, &iMonth, &iDay );
+//      iNum = hb_parni( 2 );
+      hb_retdl( 0 );
+      return;
    }
 
    iMonth += iNum;
@@ -357,16 +355,15 @@ HB_FUNC( LASTDAYOM )
    HB_BOOL bLeap = HB_FALSE;
    int iYear, iMonth, iDay;
 
-   if( HB_ISNUM( 1 ) )
-      iMonth = hb_parni( 1 );
-   else
-   {
-      if( HB_ISDATETIME( 1 ) )
-         hb_dateDecode( hb_pardl( 1 ), &iYear, &iMonth, &iDay );
-      else
-         hb_dateToday( &iYear, &iMonth, &iDay );
-
+   if( HB_ISDATETIME( 1 ) ) {
+      hb_dateDecode( hb_pardl( 1 ), &iYear, &iMonth, &iDay );
       bLeap = ct_isleap( iYear );
+   } else if( HB_ISNUM( 1 ) ) {
+      iMonth = hb_parni( 1 );
+   } else {
+      //hb_dateToday( &iYear, &iMonth, &iDay );
+      //bLeap = ct_isleap( iYear );
+      iMonth = 0;
    }
 
    hb_retni( ( iMonth && iMonth <= 12 ) ? ct_daysinmonth( iMonth, bLeap ) : 0 );

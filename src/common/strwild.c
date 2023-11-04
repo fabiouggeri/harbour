@@ -48,7 +48,10 @@
 #include "hbapicdp.h"
 
 #if defined( HB_OS_UNIX ) && ! defined( HB_NO_FNMATCH )
-#  include <fnmatch.h>
+#   ifndef _GNU_SOURCE
+#      define _GNU_SOURCE
+#   endif
+#   include <fnmatch.h>
 #endif
 
 #define HB_MAX_WILDPATTERN  256
@@ -280,7 +283,7 @@ HB_BOOL hb_strMatchFile( const char * szString, const char * szPattern )
 #  if defined( HB_NO_FNMATCH )
    return hb_strMatchWildExact( szString, szPattern );
 #  else
-   return fnmatch( szPattern, szString, FNM_PATHNAME ) == 0;
+   return fnmatch( szPattern, szString, FNM_PATHNAME | FNM_CASEFOLD ) == 0;
 #  endif
 #elif defined( HB_OS_DOS ) || defined( HB_OS_WIN ) || defined( HB_OS_OS2 )
    PHB_CODEPAGE cdp = hb_vmCDP();

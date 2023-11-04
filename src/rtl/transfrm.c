@@ -197,7 +197,7 @@ HB_FUNC( TRANSFORM )
          /* Grab enough */
 
          /* Support date function for strings */
-         if( uiPicFlags & ( PF_DATE | PF_BRITISH ) )
+         if( uiPicFlags & PF_DATE || ( uiPicFlags & PF_BRITISH && uiPicFlags & PF_REMAIN ) )
          {
             hb_dateFormat( "XXXXXXXX", szPicDate, hb_setGetDateFormat() );
             szPic = szPicDate;
@@ -339,7 +339,8 @@ HB_FUNC( TRANSFORM )
             }
          }
 
-         if( uiPicFlags & PF_BRITISH )
+         if ( ( ( uiPicFlags & PF_DATE ) && ( uiPicFlags & PF_BRITISH ) ) ||
+            ( ( uiPicFlags & PF_BRITISH ) && ( uiPicFlags & PF_REMAIN ) ) )
          {
             /* CA-Cl*pper do not check result size and always exchanges
              * bytes 1-2 with bytes 4-5. It's buffer overflow bug and I do

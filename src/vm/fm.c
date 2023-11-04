@@ -1555,7 +1555,7 @@ HB_FUNC( __FM_ALLOCLIMIT )
    hb_xclean();
 #if defined( HB_FM_DLMT_ALLOC )
    hb_retns( mspace_footprint_limit( hb_mspace() ) );
-   if( HB_ISNUM( 1 ) )
+   if( HB_ISNUMBER( 1 ) )
    {
       HB_ISIZ nLimit = hb_parns( 1 );
 
@@ -1565,7 +1565,7 @@ HB_FUNC( __FM_ALLOCLIMIT )
    }
 #elif defined( HB_FM_DL_ALLOC )
    hb_retns( dlmalloc_footprint_limit() );
-   if( HB_ISNUM( 1 ) )
+   if( HB_ISNUMBER( 1 ) )
    {
       HB_ISIZ nLimit = hb_parns( 1 );
 
@@ -1575,7 +1575,7 @@ HB_FUNC( __FM_ALLOCLIMIT )
    }
 #elif defined( HB_FM_STATISTICS )
    hb_retns( s_nMemoryLimConsumed ? s_nMemoryLimConsumed : -1 );
-   if( HB_ISNUM( 1 ) )
+   if( HB_ISNUMBER( 1 ) )
    {
       HB_ISIZ nLimit = hb_parns( 1 );
 

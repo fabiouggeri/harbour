@@ -362,6 +362,11 @@ void hb_rddSetNetErr( HB_BOOL fNetErr )
    hb_stackRDD()->fNetError = fNetErr;
 }
 
+HB_USHORT hb_rddGetMaxWorkArea( void )
+{
+   return hb_stackRDD()->uiWaNumMax;
+}
+
 /*
  * Get (/set) default RDD driver
  */

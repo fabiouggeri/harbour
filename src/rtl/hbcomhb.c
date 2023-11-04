@@ -232,7 +232,7 @@ HB_FUNC( HB_COMRECV )
 
    if( pItem && HB_ISBYREF( 2 ) && hb_itemGetWriteCL( pItem, &pBuffer, &nLen ) )
    {
-      if( HB_ISNUM( 3 ) )
+      if( HB_ISNUMBER( 3 ) )
       {
          long lRead = hb_parnl( 3 );
          if( lRead >= 0 && lRead < ( long ) nLen )
@@ -248,7 +248,7 @@ HB_FUNC( HB_COMSEND )
 {
    long  lLen = ( long ) hb_parclen( 2 );
 
-   if( HB_ISNUM( 3 ) )
+   if( HB_ISNUMBER( 3 ) )
    {
       long lParam = hb_parnl( 3 );
 

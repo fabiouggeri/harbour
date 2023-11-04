@@ -2212,7 +2212,7 @@ HB_FUNC( HBXML_DATAREAD )
    HB_SIZE    nLen;
 
    if( pDoc == NULL || pParam == NULL ||
-       ( ! HB_IS_STRING( pParam ) && ! HB_IS_NUMERIC( pParam ) ) )
+       ( ! HB_IS_STRING( pParam ) && ! HB_IS_NUMERAL( pParam ) ) )
    {
       hb_errRT_BASE( EG_ARG, 3012, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
       return;

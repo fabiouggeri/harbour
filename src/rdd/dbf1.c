@@ -1757,7 +1757,7 @@ static HB_ERRCODE hb_dbfGoToId( DBFAREAP pArea, PHB_ITEM pItem )
 {
    HB_TRACE( HB_TR_DEBUG, ( "hb_dbfGoToId(%p, %p)", ( void * ) pArea, ( void * ) pItem ) );
 
-   if( HB_IS_NUMERIC( pItem ) )
+   if( HB_IS_NUMERAL( pItem ) )
       return SELF_GOTO( &pArea->area, hb_itemGetNL( pItem ) );
    else
    {

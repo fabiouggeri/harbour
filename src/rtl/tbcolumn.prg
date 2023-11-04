@@ -50,162 +50,103 @@
 #include "tbrowse.ch"
 
 /* NOTE: In CA-Cl*pper TBColumn class does not inherit from any other classes. */
+CLASS TBColumn
 
-CREATE CLASS TBColumn
+   DATA  Block                // Code block to retrieve data for the column
+   DATA  Cargo                // User-definable variable
+   DATA  ColorBlock           // Code block that determines color of data items
+   DATA  ColSep               // Column separator character
+   DATA  DefColor             // Array of numeric indexes into the color table
+   DATA  Heading              // Column heading
+   DATA  Footing              // Column footing
+   DATA  FootSep              // Footing separator character
+   DATA  HeadSep              // Heading separator character
+   DATA  Picture              // Column picture string
 
-   EXPORTED:
+   ACCESS Width      INLINE ::nWidth      // Column display width
+   ASSIGN Width(n)   INLINE ::SetWidth(n)
 
-   /* --- Start of CA-Cl*pper compatible TBColumn instance area --- */
-   VAR cargo                                         /* 01. User-definable variable */
-   VAR nWidth       PROTECTED                        /* 02. */
-   VAR bBlock       PROTECTED                        /* 03. */
-   VAR aDefColor    PROTECTED INIT { 1, 2 }          /* 04. NOTE: Default value for both CA-Cl*pper 5.2 and 5.3. */
-   VAR bColorBlock  PROTECTED INIT {|| NIL }         /* 05. */
-   VAR cHeading     PROTECTED INIT ""                /* 06. */
-   VAR cHeadSep     PROTECTED                        /* 07. */
-   VAR cColSep      PROTECTED                        /* 08. */
-   VAR cFootSep     PROTECTED                        /* 09. */
-   VAR cFooting     PROTECTED INIT ""                /* 10. */
-   VAR picture                                       /* 11. Column picture string */
-#ifdef HB_COMPAT_C53
-   VAR bPreBlock    PROTECTED                        /* 12. */
-   VAR bPostBlock   PROTECTED                        /* 13. */
-   VAR aSetStyle    PROTECTED INIT { .F., .F., .F. } /* 14. TBC_READWRITE, TBC_MOVE, TBC_SIZE */
-#endif
-   /* --- End of CA-Cl*pper compatible TBColumn instance area --- */
+   METHOD New(cHeading, bBlock)
 
-   METHOD block( bBlock ) SETGET                     /* Code block to retrieve data for the column */
-   METHOD colorBlock( bColorBlock ) SETGET           /* Code block that determines color of data items */
-   METHOD defColor( aDefColor ) SETGET               /* Array of numeric indexes into the color table */
-   METHOD colSep( cColSep ) SETGET                   /* Column separator character */
-   METHOD heading( cHeading ) SETGET                 /* Column heading */
-   METHOD footing( cFooting ) SETGET                 /* Column footing */
-   METHOD headSep( cHeadSep ) SETGET                 /* Heading separator character */
-   METHOD footSep( cFootSep ) SETGET                 /* Footing separator character */
-   METHOD width( nWidth ) SETGET                     /* Column display width */
-#ifdef HB_COMPAT_C53
-   METHOD preBlock( bPreBlock ) SETGET               /* Code block determining editing */
-   METHOD postBlock( bPostBlock ) SETGET             /* Code block validating values */
-   METHOD setStyle( nStyle, lNewValue )
-#endif
+   #ifdef HB_COMPAT_C53
+   DATA  PreBlock             //
+   DATA  PostBlock            //
 
-   METHOD Init( cHeading, bBlock )                    /* NOTE: This method is a Harbour extension [vszakats] */
+   METHOD SetStyle( nMode, lSetting )
+   #endif
+
+   HIDDEN:     /* H I D D E N */
+
+   DATA     nWidth
+   METHOD   SetWidth(n)
+
+   #ifdef HB_COMPAT_C53
+   DATA     aSetStyle
+   #endif
 
 ENDCLASS
 
-METHOD block( bBlock ) CLASS TBColumn
+//-------------------------------------------------------------------//
 
-   IF bBlock != NIL
-      ::bBlock := __eInstVar53( Self, "BLOCK", bBlock, "B", 1001 )
-   ENDIF
+METHOD New( cHeading, bBlock ) CLASS TBColumn
 
-   RETURN ::bBlock
+   cHeading := hb_defaultValue( cHeading, "" )
 
-METHOD colorBlock( bColorBlock ) CLASS TBColumn
+   ::DefColor := { 1, 2, 1, 1 }
+   ::ColSep   := nil
 
-   IF bColorBlock != NIL
-      ::bColorBlock := __eInstVar53( Self, "COLORBLOCK", bColorBlock, "B", 1001 )
-   ENDIF
+   ::nWidth   := nil
+   ::Heading  := if( valtype( cHeading ) == 'C', cHeading, ' ' )
 
-   RETURN ::bColorBlock
+   /* NOTE: needs to be initialized to an empty string or TBrowse()::WriteMLineText() does not work
+            if there are columns which have a footing and others which don't
+   */
+   ::Footing  := ""
+   ::block    := bBlock
 
-METHOD defColor( aDefColor ) CLASS TBColumn
+   #ifdef HB_COMPAT_C53
+   ::aSetStyle := ARRAY( 3 )
 
-   IF aDefColor != NIL
-      ::aDefColor := __eInstVar53( Self, "DEFCOLOR", aDefColor, "A", 1001 )
-   ENDIF
+   ::aSetStyle[ TBC_READWRITE ] := .f.
+   ::aSetStyle[ TBC_MOVE ]      := .f.
+   ::aSetStyle[ TBC_SIZE ]      := .f.
+   #endif
 
-   RETURN ::aDefColor
+return Self
 
-METHOD colSep( cColSep ) CLASS TBColumn
+//-------------------------------------------------------------------//
 
-   IF cColSep != NIL
-      ::cColSep := __eInstVar53( Self, "COLSEP", cColSep, "C", 1001 )
-   ENDIF
+METHOD SetWidth(n) CLASS TBColumn
 
-   RETURN ::cColSep
+   // From a TOFIX inside TBrowse.prg:
+   // "Also Clipper will not allow the user to assign a NIL to the :width variable."
+   if n <> nil
+      ::nWidth := n
+   endif
 
-METHOD heading( cHeading ) CLASS TBColumn
+return n
 
-   IF cHeading != NIL
-      ::cHeading := __eInstVar53( Self, "HEADING", cHeading, "C", 1001 )
-   ENDIF
-
-   RETURN ::cHeading
-
-METHOD footing( cFooting ) CLASS TBColumn
-
-   IF cFooting != NIL
-      ::cFooting := __eInstVar53( Self, "FOOTING", cFooting, "C", 1001 )
-   ENDIF
-
-   RETURN ::cFooting
-
-METHOD headSep( cHeadSep ) CLASS TBColumn
-
-   IF cHeadSep != NIL
-      ::cHeadSep := __eInstVar53( Self, "HEADSEP", cHeadSep, "C", 1001 )
-   ENDIF
-
-   RETURN ::cHeadSep
-
-METHOD footSep( cFootSep ) CLASS TBColumn
-
-   IF cFootSep != NIL
-      ::cFootSep := __eInstVar53( Self, "FOOTSEP", cFootSep, "C", 1001 )
-   ENDIF
-
-   RETURN ::cFootSep
-
-METHOD width( nWidth ) CLASS TBColumn
-
-   IF nWidth != NIL
-      ::nWidth := __eInstVar53( Self, "WIDTH", nWidth, "N", 1001 )
-   ENDIF
-
-   RETURN ::nWidth
+//-------------------------------------------------------------------//
 
 #ifdef HB_COMPAT_C53
+METHOD SetStyle( nMode, lSetting ) CLASS TBColumn
+  LOCAL lRet
 
-METHOD preBlock( bPreBlock ) CLASS TBColumn
+  IF nMode > LEN( ::aSetStyle )
+     RETURN .F.
+  ENDIF
 
-   IF bPreBlock != NIL
-      ::bPreBlock := __eInstVar53( Self, "PREBLOCK", bPreBlock, "B", 1001 )
-   ENDIF
+  lRet := ::aSetStyle[ nMode ]
 
-   RETURN ::bPreBlock
+  IF HB_ISLOGICAL( lSetting )
+     ::aSetStyle[ nMode ] := lSetting
+  ENDIF
 
-METHOD postBlock( bPostBlock ) CLASS TBColumn
-
-   IF bPostBlock != NIL
-      ::bPostBlock := __eInstVar53( Self, "POSTBLOCK", bPostBlock, "B", 1001 )
-   ENDIF
-
-   RETURN ::bPostBlock
-
-METHOD setStyle( nStyle, lNewValue ) CLASS TBColumn
-
-   /* NOTE: CA-Cl*pper 5.3 does no checks on the value of nStyle, so in case
-            it is zero or non-numeric, a regular RTE will happen. [vszakats] */
-
-   IF nStyle > Len( ::aSetStyle ) .AND. nStyle <= 4096  /* Some reasonable limit for maximum number of styles */
-      ASize( ::aSetStyle, nStyle )
-   ENDIF
-
-   IF HB_ISLOGICAL( lNewValue )
-      ::aSetStyle[ nStyle ] := lNewValue
-   ENDIF
-
-   RETURN ::aSetStyle[ nStyle ]
-
+RETURN lRet
 #endif
 
-METHOD Init( cHeading, bBlock ) CLASS TBColumn
+//-------------------------------------------------------------------//
 
-   ::cHeading := cHeading  /* NOTE: CA-Cl*pper allows any type here. [vszakats] */
-   ::bBlock := bBlock      /* NOTE: CA-Cl*pper allows any type here. [vszakats] */
+function TBColumnNew(cHeading, bBlock)
 
-   RETURN Self
-
-FUNCTION TBColumnNew( cHeading, bBlock )
-   RETURN TBColumn():New( cHeading, bBlock )
+return TBColumn():New(cHeading, bBlock)

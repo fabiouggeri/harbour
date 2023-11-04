@@ -235,12 +235,12 @@ PHB_SYMB hb_symbolNew( const char * szName )
 }
 
 /* creates a new dynamic symbol */
-PHB_DYNS hb_dynsymNew( PHB_SYMB pSymbol )
+PHB_DYNS hb_dynsymNew( PHB_SYMB pSymbol, HB_BOOL bOverload )
 {
    PHB_DYNS pDynSym;
    HB_SYMCNT uiPos;
 
-   HB_TRACE( HB_TR_DEBUG, ( "hb_dynsymNew(%p)", ( void * ) pSymbol ) );
+   HB_TRACE( HB_TR_DEBUG, ( "hb_dynsymNew(%p,%s)", pSymbol, (bOverload ? "true" : "false") ) );
 
    HB_DYNSYM_LOCK();
 
@@ -318,22 +318,21 @@ PHB_DYNS hb_dynsymNew( PHB_SYMB pSymbol )
              * symbols so we will use HB_FS_DEFERRED flag which is updated
              * dynamically in hb_vmSend()/hb_vmDo() functions
              */
-#define HB_OVERLOAD_MULTIPLE_FUNC
 
-#if defined( HB_OVERLOAD_MULTIPLE_FUNC )
-            /* In such way works MinGW, DJGPP, BCC */
+            if (bOverload) {
+                     /* In such way works MinGW, DJGPP, BCC */
 #if defined( __GNUC__ ) && ! defined( __DJGPP__ )
-            /* MinGW (like most of other GCC ports) uses reverted order for
-             * initialization functions
-             */
-            pDynSym->pSymbol->scope.value &= ~HB_FS_LOCAL;
-            pDynSym->pSymbol->scope.value |= HB_FS_DEFERRED;
+               /* MinGW (like most of other GCC ports) uses reverted order for
+                  * initialization functions
+                  */
+               pDynSym->pSymbol->scope.value &= ~HB_FS_LOCAL;
+               pDynSym->pSymbol->scope.value |= HB_FS_DEFERRED;
 #else
-            /* BCC, DJGPP, ... */
-            pSymbol->scope.value &= ~HB_FS_LOCAL;
-            pSymbol->scope.value |= HB_FS_DEFERRED;
+               /* BCC, DJGPP, ... */
+               pSymbol->scope.value &= ~HB_FS_LOCAL;
+               pSymbol->scope.value |= HB_FS_DEFERRED;
 #endif
-#endif
+            }
          }
       }
 

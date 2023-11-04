@@ -781,7 +781,7 @@ HB_FUNC( CURL_EASY_RECV )
 
 HB_FUNC( CURL_EASY_SETOPT )
 {
-   if( PHB_CURL_is( 1 ) && HB_ISNUM( 2 ) )
+   if( PHB_CURL_is( 1 ) && HB_ISNUMBER( 2 ) )
    {
       PHB_CURL hb_curl = PHB_CURL_par( 1 );
       CURLcode res     = ( CURLcode ) HB_CURLE_ERROR;
@@ -1698,7 +1698,7 @@ HB_FUNC( CURL_EASY_SETOPT )
             case HB_CURLOPT_UL_FHANDLE_SETUP:
                hb_curl_file_ul_free( hb_curl );
 
-               if( HB_ISNUM( 3 ) )
+               if( HB_ISNUMBER( 3 ) )
                {
                   hb_curl->ul_name   = NULL;
                   hb_curl->ul_handle = hb_numToHandle( hb_parnint( 3 ) );
@@ -1729,7 +1729,7 @@ HB_FUNC( CURL_EASY_SETOPT )
             case HB_CURLOPT_DL_FHANDLE_SETUP:
                hb_curl_file_dl_free( hb_curl );
 
-               if( HB_ISNUM( 3 ) )
+               if( HB_ISNUMBER( 3 ) )
                {
                   hb_curl->dl_name   = NULL;
                   hb_curl->dl_handle = hb_numToHandle( hb_parnint( 3 ) );
@@ -1852,7 +1852,7 @@ HB_FUNC( CURL_EASY_DL_BUFF_GET )
 /* NOTE: curl_easy_getinfo( curl, x, @nError ) -> xValue */
 HB_FUNC( CURL_EASY_GETINFO )
 {
-   if( PHB_CURL_is( 1 ) && HB_ISNUM( 2 ) )
+   if( PHB_CURL_is( 1 ) && HB_ISNUMBER( 2 ) )
    {
       PHB_CURL hb_curl = PHB_CURL_par( 1 );
       CURLcode res     = ( CURLcode ) HB_CURLE_ERROR;
@@ -2248,7 +2248,7 @@ HB_FUNC( CURL_VERSION_INFO )
 
 HB_FUNC( CURL_EASY_STRERROR )
 {
-   if( HB_ISNUM( 1 ) )
+   if( HB_ISNUMBER( 1 ) )
 #if LIBCURL_VERSION_NUM >= 0x070C00
       hb_retc( curl_easy_strerror( ( CURLcode ) hb_parnl( 1 ) ) );
 #else

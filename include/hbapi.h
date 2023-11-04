@@ -221,6 +221,11 @@ HB_EXTERN_BEGIN
 
 #endif
 
+#ifdef _XHB_COMPAT_
+   #define HB_IS_NUMERAL( p )  ( HB_IS_NUMERIC( p ) || HB_IS_DATE( p ) || hb_itemGetCLen( p ) == 1 )
+   #define HB_ISNUMBER( n )    ( n >= -1 && n <= hb_pcount() && HB_IS_NUMBER( hb_param( n, HB_IT_ANY ) ) )
+#endif
+
 
 #define HB_ISNIL( n )         ( hb_extIsNil( n ) )                         /* NOTE: Intentionally using a different method */
 #define HB_ISCHAR( n )        ( hb_param( n, HB_IT_STRING ) != NULL )
@@ -1026,7 +1031,7 @@ extern HB_EXPORT void      hb_put_le_uint64( const HB_BYTE * ptr, double d );
 /* dynamic symbol table management */
 extern HB_EXPORT PHB_DYNS  hb_dynsymGet( const char * szName );    /* finds and creates a dynamic symbol if not found */
 extern HB_EXPORT PHB_DYNS  hb_dynsymGetCase( const char * szName );    /* finds and creates a dynamic symbol if not found - case sensitive */
-extern HB_EXPORT PHB_DYNS  hb_dynsymNew( PHB_SYMB pSymbol ); /* creates a new dynamic symbol based on a local one */
+extern HB_EXPORT PHB_DYNS  hb_dynsymNew( PHB_SYMB pSymbol, HB_BOOL bOverload ); /* creates a new dynamic symbol based on a local one */
 extern HB_EXPORT PHB_DYNS  hb_dynsymFind( const char * szName );   /* finds a dynamic symbol */
 extern HB_EXPORT PHB_DYNS  hb_dynsymFindName( const char * szName ); /* converts to uppercase and finds a dynamic symbol */
 extern HB_EXPORT void      hb_dynsymRelease( void );         /* releases the memory of the dynamic symbol table */
@@ -1083,6 +1088,7 @@ extern PHB_ITEM         hb_codeblockGetRef( PHB_CODEBLOCK pCBlock, int iItemPos 
 /* memvars subsystem */
 extern           void       hb_memvarsClear( HB_BOOL fAll ); /* clear all PUBLIC and PRIVATE variables optionally without GetList PUBLIC variable */
 extern HB_EXPORT void       hb_memvarSetValue( PHB_SYMB pMemvarSymb, PHB_ITEM pItem ); /* copy an item into a symbol */
+extern HB_EXPORT void       hb_memvarSetValuePub( PHB_SYMB pMemvarSymb, PHB_ITEM pItem ); /* copy an item into a symbol */
 extern HB_EXPORT HB_ERRCODE hb_memvarGet( PHB_ITEM pItem, PHB_SYMB pMemvarSymb ); /* copy an symbol value into an item */
 extern           void       hb_memvarGetValue( PHB_ITEM pItem, PHB_SYMB pMemvarSymb ); /* copy an symbol value into an item, with error trapping */
 extern           void       hb_memvarGetRefer( PHB_ITEM pItem, PHB_SYMB pMemvarSymb ); /* copy a reference to a symbol value into an item, with error trapping */

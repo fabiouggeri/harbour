@@ -110,6 +110,17 @@ FILE * hb_fopen( const char * path, const char * mode )
          file = NULL;
    #else
       file = fopen( path, mode );
+      #if defined( HB_OS_UNIX )
+      if (file == NULL && hb_setGetRetryFileCase()) 
+      {
+         char pathBuffer[HB_PATH_MAX];
+         char *pathFound = hb_fsFindInsensitiveCaseFilePath(path, pathBuffer);
+         if (pathFound) 
+         {
+            file = fopen( pathFound, mode );
+         }
+      }
+      #endif
    #endif
    hb_vmLock();
 

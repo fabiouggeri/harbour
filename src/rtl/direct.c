@@ -89,8 +89,10 @@
 #include "hbapi.h"
 #include "hbapifs.h"
 #include "hbapiitm.h"
+#include "hbset.h"
 
 #include "directry.ch"
+#include "set.ch"
 
 /* NOTE: 8.3 support should be added in a separate way, like
          as a function which converts full names to 8.3 names, since
@@ -141,12 +143,27 @@ PHB_ITEM hb_fsDirectory( const char * pszDirSpec, const char * pszAttributes, HB
       do
       {
          char buffer[ 32 ];
+         char * pszFree = NULL;
 
-         hb_arrayNew    ( pSubarray, F_LEN );
-         hb_arraySetC   ( pSubarray, F_NAME, ffind->szName );
+         hb_arrayNew( pSubarray, F_LEN );
+         switch (hb_setGetDirReturnCase()) {
+            case HB_SET_CASE_UPPER:
+               hb_arraySetCPtr( pSubarray, F_NAME, hb_strupr( hb_strdup( ffind->szName ) ) );
+               break;
+            case HB_SET_CASE_LOWER:
+               hb_arraySetCPtr( pSubarray, F_NAME, hb_strlow( hb_strdup( ffind->szName ) ) );
+               break;
+            default:
+               hb_arraySetC( pSubarray, F_NAME, ffind->szName );
+               break;
+         }
          hb_arraySetNInt( pSubarray, F_SIZE, ffind->size );
          hb_arraySetC   ( pSubarray, F_TIME, ffind->szTime );
          hb_arraySetC   ( pSubarray, F_ATTR, hb_fsAttrDecode( ffind->attr, buffer ) );
+         if( pszFree )
+         {
+            hb_xfree( pszFree );
+         }
 
          if( fDateTime )
             hb_arraySetTDT( pSubarray, F_DATE, ffind->lDate, ffind->lTime );

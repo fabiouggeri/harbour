@@ -111,13 +111,13 @@ HB_FUNC( XHB__KEYBOARD )
    if( ! hb_parl( 2 ) )
       hb_inkeyReset();
 
-   if( HB_ISNUM( 1 ) )
-   {
-      hb_inkeyPut( hb_parni( 1 ) );
-   }
-   else if( HB_ISCHAR( 1 ) )
+   if( HB_ISCHAR( 1 ) )
    {
       hb_inkeySetText( hb_parc( 1 ), hb_parclen( 1 ), HB_FALSE );
+   }
+   else if( HB_ISNUM( 1 ) )
+   {
+      hb_inkeyPut( hb_parni( 1 ) );
    }
    else if( HB_ISARRAY( 1 ) )
    {

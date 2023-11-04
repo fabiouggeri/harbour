@@ -607,6 +607,10 @@ HB_BOOL hb_itemGetL( PHB_ITEM pItem )
 
       else if( HB_IS_DOUBLE( pItem ) )
          return pItem->item.asDouble.value != 0.0;
+#ifdef _XHB_COMPAT_
+      else if ( hb_itemGetCLen( pItem ) == 1 )
+         return ( HB_BOOL ) pItem->item.asString.value[0];
+#endif
    }
 
    return HB_FALSE;
@@ -634,6 +638,10 @@ HB_BOOL hb_itemGetLX( PHB_ITEM pItem )
          return pItem->item.asDateTime.julian != 0 ||
                 pItem->item.asDateTime.time != 0;
 
+#ifdef _XHB_COMPAT_
+      else if ( hb_itemGetCLen( pItem ) == 1 )
+         return ( HB_BOOL ) pItem->item.asString.value[0];
+#endif
       else
          return HB_TRUE;
    }
@@ -655,6 +663,14 @@ double hb_itemGetND( PHB_ITEM pItem )
 
       else if( HB_IS_LONG( pItem ) )
          return ( double ) pItem->item.asLong.value;
+      
+#ifdef _XHB_COMPAT_
+      else if ( HB_IS_DATETIME( pItem ) )
+         return ( double ) pItem->item.asDateTime.julian;
+
+      else if ( hb_itemGetCLen( pItem ) == 1 )
+         return ( double ) pItem->item.asString.value[0];
+#endif      
    }
 
    return 0;
@@ -674,6 +690,14 @@ int hb_itemGetNI( PHB_ITEM pItem )
 
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_INT( pItem->item.asDouble.value );
+      
+#ifdef _XHB_COMPAT_
+      else if ( HB_IS_DATETIME( pItem ) )
+         return ( int ) pItem->item.asDateTime.julian;
+
+      else if ( hb_itemGetCLen( pItem ) == 1 )
+         return ( int ) pItem->item.asString.value[0];
+#endif      
    }
 
    return 0;
@@ -693,6 +717,14 @@ long hb_itemGetNL( PHB_ITEM pItem )
 
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_LONG( pItem->item.asDouble.value );
+      
+#ifdef _XHB_COMPAT_
+      else if ( HB_IS_DATETIME( pItem ) )
+         return ( long ) pItem->item.asDateTime.julian;
+
+      else if ( hb_itemGetCLen( pItem ) == 1 )
+         return ( long ) pItem->item.asString.value[0];
+#endif      
    }
 
    return 0;
@@ -712,6 +744,14 @@ HB_ISIZ hb_itemGetNS( PHB_ITEM pItem )
 
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_ISIZ( pItem->item.asDouble.value );
+      
+#ifdef _XHB_COMPAT_
+      else if ( HB_IS_DATETIME( pItem ) == 1 )
+         return ( HB_ISIZ ) pItem->item.asDateTime.julian;
+
+      else if ( hb_itemGetCLen( pItem ) == 1 )
+         return ( HB_ISIZ ) pItem->item.asString.value[0];
+#endif
    }
 
    return 0;
@@ -731,6 +771,14 @@ HB_MAXINT hb_itemGetNInt( PHB_ITEM pItem )
 
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_MAXINT( pItem->item.asDouble.value );
+      
+#ifdef _XHB_COMPAT_
+      else if ( HB_IS_DATETIME( pItem ) )
+         return ( HB_MAXINT ) pItem->item.asDateTime.julian;
+      
+      else if ( hb_itemGetCLen( pItem ) == 1 )
+         return ( HB_MAXINT ) pItem->item.asString.value[0];
+#endif
    }
 
    return 0;
@@ -751,6 +799,14 @@ HB_LONGLONG hb_itemGetNLL( PHB_ITEM pItem )
 
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_LONGLONG( pItem->item.asDouble.value );
+      
+#ifdef _XHB_COMPAT_
+      else if ( HB_IS_DATETIME( pItem ) )
+         return ( HB_LONGLONG ) pItem->item.asDateTime.julian;
+
+      else if( HB_IS_STRING( pItem ) )
+         return ( HB_LONGLONG ) pItem->item.asString.value[0];
+#endif
    }
 
    return 0;
@@ -1235,6 +1291,13 @@ double hb_itemGetNDDec( PHB_ITEM pItem, int * piDec )
       *piDec = pItem->item.asDouble.decimal;
       return pItem->item.asDouble.value;
    }
+#ifdef _XHB_COMPAT_
+   else if( hb_itemGetCLen( pItem ) == 1 )
+   {
+      *piDec = 0;
+      return ( double ) pItem->item.asString.value[0];
+   }
+#endif
 
    *piDec = 0;
    return 0.0;
@@ -2434,9 +2497,9 @@ int hb_itemStrCmp( PHB_ITEM pFirst, PHB_ITEM pSecond, HB_BOOL bForceExact )
    {
       /* SET EXACT ON and not using == */
       /* Don't include trailing spaces */
-      while( nLenFirst > nLenSecond && szFirst[ nLenFirst - 1 ] == ' ' )
+      while( nLenFirst > 1 && szFirst[ nLenFirst - 1 ] == ' ' ) 
          nLenFirst--;
-      while( nLenSecond > nLenFirst && szSecond[ nLenSecond - 1 ] == ' ' )
+      while( nLenSecond > 1 && szSecond[ nLenSecond - 1 ] == ' ' ) 
          nLenSecond--;
       bForceExact = HB_TRUE;
    }
@@ -2513,9 +2576,9 @@ int hb_itemStrICmp( PHB_ITEM pFirst, PHB_ITEM pSecond, HB_BOOL bForceExact )
    {
       /* SET EXACT ON and not using == */
       /* Don't include trailing spaces */
-      while( nLenFirst > nLenSecond && szFirst[ nLenFirst - 1 ] == ' ' )
+      while( nLenFirst > 1 && szFirst[ nLenFirst - 1 ] == ' ' ) 
          nLenFirst--;
-      while( nLenSecond > nLenFirst && szSecond[ nLenSecond - 1 ] == ' ' )
+      while( nLenSecond > 1 && szSecond[ nLenSecond - 1 ] == ' ' ) 
          nLenSecond--;
       bForceExact = HB_TRUE;
    }
@@ -2733,12 +2796,17 @@ HB_BOOL hb_itemStrBuf( char * szResult, PHB_ITEM pNumber, int iSize, int iDec )
    {
       HB_MAXINT nNumber;
 
+      
+#ifdef _XHB_COMPAT_
+      if( HB_IS_NUMERAL( pNumber ) )
+         nNumber = hb_itemGetNInt( pNumber );
+#else
       if( HB_IS_INTEGER( pNumber ) )
          nNumber = pNumber->item.asInteger.value;
 
       else if( HB_IS_LONG( pNumber ) )
          nNumber = pNumber->item.asLong.value;
-
+#endif
       else
       {
          nNumber = 0;

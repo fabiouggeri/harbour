@@ -60,15 +60,15 @@ HB_FUNC( RANGEREM )
       HB_SIZE sRetIndex;
       int iMode;
 
-      if( HB_ISCHAR( 1 ) )
-         ucChar1 = *( ( const unsigned char * ) hb_parc( 1 ) );
-      else
+      if( HB_ISNUM( 1 ) )
          ucChar1 = ( unsigned char ) ( hb_parni( 1 ) % 256 );
-
-      if( HB_ISCHAR( 2 ) )
-         ucChar2 = *( ( const unsigned char * ) hb_parc( 2 ) );
       else
+         ucChar1 = *( ( const unsigned char * ) hb_parc( 1 ) );
+
+      if( HB_ISNUM( 2 ) )
          ucChar2 = ( unsigned char ) ( hb_parni( 2 ) % 256 );
+      else
+         ucChar2 = *( ( const unsigned char * ) hb_parc( 2 ) );
 
       iMode = ( ucChar2 < ucChar1 );
 
@@ -128,20 +128,20 @@ HB_FUNC( RANGEREPL )
       HB_SIZE sRetIndex;
       int iMode;
 
-      if( HB_ISCHAR( 1 ) )
-         ucChar1 = *( ( const unsigned char * ) hb_parc( 1 ) );
-      else
+      if( HB_ISNUM( 1 ) )
          ucChar1 = ( unsigned char ) ( hb_parni( 1 ) % 256 );
-
-      if( HB_ISCHAR( 2 ) )
-         ucChar2 = *( ( const unsigned char * ) hb_parc( 2 ) );
       else
+         ucChar1 = *( ( const unsigned char * ) hb_parc( 1 ) );
+
+      if( HB_ISNUM( 2 ) )
          ucChar2 = ( unsigned char ) ( hb_parni( 2 ) % 256 );
-
-      if( HB_ISCHAR( 4 ) )
-         ucReplace = *( ( const unsigned char * ) hb_parc( 4 ) );
       else
+         ucChar2 = *( ( const unsigned char * ) hb_parc( 2 ) );
+
+      if( HB_ISNUM( 4 ) )
          ucReplace = ( unsigned char ) ( hb_parni( 4 ) % 256 );
+      else
+         ucReplace = *( ( const unsigned char * ) hb_parc( 4 ) );
 
       iMode = ( ucChar2 < ucChar1 );
 

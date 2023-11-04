@@ -69,6 +69,24 @@ typedef zipFile__ *zipFile;
 typedef voidp zipFile;
 #endif
 
+/* Defines para compatibilizar com a LIB do TE, pois ela redefine essas funcoes e o comportamento nao eh exetamente igual */
+#define LoadCentralDirectoryRecord              mz_LoadCentralDirectoryRecord              
+#define zipOpen3                                mz_zipOpen3                               
+#define zipOpen2                                mz_zipOpen2                               
+#define zipOpen                                 mz_zipOpen                                
+#define Write_LocalFileHeader                   mz_Write_LocalFileHeader                  
+#define zipWriteInFileInZip                     mz_zipWriteInFileInZip                    
+#define zipCloseFileInZipRaw64                  mz_zipCloseFileInZipRaw64                 
+#define Write_Zip64EndOfCentralDirectoryLocator mz_Write_Zip64EndOfCentralDirectoryLocator
+#define Write_Zip64EndOfCentralDirectoryRecord  mz_Write_Zip64EndOfCentralDirectoryRecord 
+#define Write_EndOfCentralDirectoryRecord       mz_Write_EndOfCentralDirectoryRecord      
+#define Write_GlobalComment                     mz_Write_GlobalComment                    
+#define zipCloseFileInZipRaw                    mz_zipCloseFileInZipRaw                   
+#define zipCloseFileInZip                       mz_zipCloseFileInZip                      
+#define zipClose                                mz_zipClose                               
+#define zipOpenNewFileInZip4_64                 mz_zipOpenNewFileInZip4_64                
+#define zipOpenNewFileInZip4                    mz_zipOpenNewFileInZip4                   
+
 #define ZIP_OK                          (0)
 #define ZIP_EOF                         (0)
 #define ZIP_ERRNO                       (Z_ERRNO)

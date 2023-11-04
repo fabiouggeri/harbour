@@ -88,7 +88,11 @@
    #define HB_NO_PROFILER
 #endif
 
-/*
+#ifndef HB_CLP_UNDOC
+   #define HB_CLP_UNDOC
+#endif
+
+/* ***********************************************************************
  * This symbol defines if Harbour is compiled using C compiler
  * that support strict ANSI C only
  *
@@ -629,5 +633,7 @@
 #else
    #define HB_FORCEINLINE     _HB_INLINE_
 #endif
+
+#define _XHB_COMPAT_
 
 #endif /* HB_SETUP_H_ */

@@ -50,7 +50,7 @@
          the debugger output may interfere with the applications output
          redirection, and is also slower. [vszakats] */
 
-#pragma -b-
+// #pragma -b-
 
 #define HB_CLS_NOTOBJECT      /* do not inherit from HBObject class */
 #include "hbclass.ch"
@@ -63,7 +63,9 @@
 #include "getexit.ch"
 #include "inkey.ch"
 #include "setcurs.ch"
+#include "directry.ch"
 
+#define HB_DBG_CS_STACKINDEX  8
 
 /* Public or Private created in ::LoadVars(), value stored in HB_DBG_VAR_INDEX */
 #define HB_DBG_VAR_MVALUE       HB_DBG_VAR_INDEX
@@ -72,14 +74,36 @@
 #define WP_TYPE                 1  // wp: watchpoint, tr: tracepoint
 #define WP_EXPR                 2  // source of an expression
 
+#define WP_VAR_SCOPE            1
+#define WP_VAR_VALUE            2 
+
 /* The dimensions of the debugger window */
 #define DEBUGGER_MINROW         0
 #define DEBUGGER_MINCOL         0
 #define DEBUGGER_MAXROW         22
 #define DEBUGGER_MAXCOL         77
 
+#define GET_BUFFER_SIZE         4096
+
 /* command window scroll history */
 #define DEBUGGER_CMDHIST_SIZE   128
+
+#define VS_ICON   0
+#define VS_NORMAL 1
+#define VS_ZOOM   2
+
+#ifdef __PLATFORM__LINUX
+   #define WINDOW_HEIGHT HB_GTInfo(HB_GTI_VIEWMAXHEIGHT)
+   #define WINDOW_WIDTH  HB_GTInfo(HB_GTI_VIEWMAXWIDTH)
+   #define TRACE_KEY_NAME "F12"
+   #define TRACE_KEY      K_F12
+#else
+   #define WINDOW_HEIGHT  HB_GTInfo(HB_GTI_VIEWPORTHEIGHT)
+   #define WINDOW_WIDTH   HB_GTInfo(HB_GTI_VIEWPORTWIDTH)
+   #define TRACE_KEY_NAME "F10"
+   #define TRACE_KEY      K_F10
+#endif
+
 
 THREAD STATIC t_oDebugger
 
@@ -121,6 +145,7 @@ CREATE CLASS HBDebugger
    VAR pInfo
    VAR aWindows          INIT {}
    VAR nCurrentWindow    INIT 1
+   VAR oCurrentWnd
    VAR oPullDown
 
    VAR oWndCode
@@ -153,7 +178,7 @@ CREATE CLASS HBDebugger
    VAR nProcLevel                   // procedure level where the debugger is currently
    VAR aModules          INIT {}    // array of modules with static and GLOBAL variables
    VAR aWatch            INIT {}
-   VAR aColors           INIT { "W+/BG", "N/BG", "R/BG", "N+/BG", "W+/B", "GR+/B", "W/B", "N/W", "R/W", "N/BG", "R/BG" }
+   VAR aColors           INIT { "W+/BG", "N/BG", "R/BG", "N+/BG", "W+/B", "GR+/B", "W/B", "N/W", "R/W", "N/BG", "R/BG", "N/W", "R/W" }
 
    VAR aHistCommands
    VAR aLastCommands
@@ -171,7 +196,7 @@ CREATE CLASS HBDebugger
    VAR cSettingsFileName INIT "init.cld"
    VAR aPathDirs
 
-   VAR nTabWidth         INIT 4
+   VAR nTabWidth         INIT 3
    VAR nSpeed            INIT 0
 
    VAR lShowPublics      INIT .F.
@@ -183,7 +208,6 @@ CREATE CLASS HBDebugger
    VAR lAll              INIT .F.
    VAR lShowCallStack    INIT .F.
    VAR lGo                          // stores if GO was requested
-   VAR lActive           INIT .F.
    VAR lCBTrace          INIT .T.   // stores if codeblock tracing is allowed
    VAR oBrwPnt
    VAR oWndPnt
@@ -194,7 +218,18 @@ CREATE CLASS HBDebugger
    VAR nWaFocus          INIT 1
    VAR nCmdWndHight      INIT 3
    VAR lWindowsAutoSized INIT .T.
-
+   VAR lExchangeScreens  INIT .T.
+   VAR lMenuBar          INIT .T.
+   VAR lTiled            INIT .T.
+   VAR lChangeScreen     INIT .T.
+   VAR bAppInkeyAfter    
+   VAR bAppInkeyBefore   
+   VAR nAppRow           INIT 0
+   VAR nAppCol           INIT 0
+   VAR cKeyboardBuffer   INIT ""
+   VAR cAppColors        INIT ""
+   var cAppScreen
+   
    METHOD New()
    METHOD Activate()
 
@@ -203,18 +238,20 @@ CREATE CLASS HBDebugger
    METHOD Animate() INLINE iif( ::lAnimate, ::Step(), NIL )
 
    METHOD BarDisplay()
+   METHOD BuildVarsWindow()
+   METHOD BuildWatchWindow()
+   METHOD BuildStackWindow()
    METHOD BuildCommandWindow()
    METHOD BuildBrowseStack()
    METHOD ResizeCmdWnd( nLines )
 
    METHOD CallStackProcessKey( nKey )
-   METHOD ClrModal() INLINE iif( ::lMonoDisplay, "N/W, W+/W, W/N, W+/N", ;
-      "N/W, R/W, N/BG, R/BG" )
-   METHOD GetColors() INLINE iif( ! ::lMonoDisplay, ::aColors, { ;
-      "W+/N", "W+/N", "N/W", "N/W", ;
-      "N/W", "N/W", "W+/N", "N/W", ;
-      "W+/W", "W/N", "W+/N" } )
+   METHOD ClrModal() INLINE iif( ::lMonoDisplay, "N/W, W+/W, W/N, W+/N", "N/W, R/W, N/BG, R/BG" )
+   METHOD GetColors() INLINE iif( ! ::lMonoDisplay, ::aColors, { "W+/N", "W+/N", "N/W", "N/W", ;
+                                                                 "N/W", "N/W", "W+/N", "N/W", ;
+                                                                 "W+/W", "W/N", "W+/N", "W/N", "W/N" } )
    METHOD CodeblockTrace()
+   METHOD ExchangeScreens()
    METHOD CodeWindowProcessKey( nKey )
    METHOD Colors()
    METHOD CommandWindowProcessKey( nKey )
@@ -239,6 +276,7 @@ CREATE CLASS HBDebugger
    METHOD Hide()
    METHOD HideCallStack()
    METHOD HideVars()
+   METHOD EditValue( cMsg, uValue, lEditable )
    METHOD InputBox( cMsg, uValue, bValid, lEditable )
    METHOD Inspect( uValue, cValueName )
    METHOD IsValidStopLine( cName, nLine )
@@ -253,6 +291,7 @@ CREATE CLASS HBDebugger
    METHOD Locate( nMode, cValue )
 
    METHOD MonoDisplay()
+   METHOD MoveWindow( nMRow, nMCol )
    METHOD NextWindow()
    METHOD Open( cFileName )
    METHOD OpenMenu( cName )
@@ -260,17 +299,21 @@ CREATE CLASS HBDebugger
    METHOD Resume() INLINE ::ShowCodeLine( 1 )
    METHOD OSShell()
    METHOD PathForFiles( cPathForFiles )
-
+   METHOD Iconize()
+   METHOD Zoom()
+   METHOD MenuBar()
+   METHOD ShowMenuBar()
+   METHOD Size( nMRow, nMCol )
+   METHOD Tile()
+  
    METHOD PrevWindow()
    METHOD Private()
    METHOD Public()
    METHOD Quit()
    METHOD RefreshVars()
-   METHOD RestoreAppScreen()
    METHOD RestoreAppState()
    METHOD RestoreSettings( cFileName )
    METHOD RunAtStartup( lRunAtStartup )
-   METHOD SaveAppScreen()
    METHOD SaveAppState()
    METHOD SaveSettings( cFileName )
    METHOD Show()
@@ -280,11 +323,10 @@ CREATE CLASS HBDebugger
    METHOD ShowCodeLine( nProc )
    METHOD ShowHelp( cTopic )
    METHOD ShowVars()
-   METHOD LocatePrgPath( cPrgName )
+   METHOD LocatePrgPath( cPrgName, aDirs )
    METHOD Sort() INLINE ASort( ::aVars,,, {| x, y | x[ HB_DBG_VAR_NAME ] < y[ HB_DBG_VAR_NAME ] } ), ;
-      ::lSortVars := .T., ;
-      iif( ::oBrwVars != NIL, ::oBrwVars:RefreshAll(), NIL ), ;
-      iif( ::oWndVars != NIL .AND. ::oWndVars:lVisible, iif( ! ::lGo .AND. ::oBrwVars != NIL, ::oBrwVars:ForceStable(), NIL ), NIL )
+                        ::lSortVars := .T., ::oBrwVars:RefreshAll(), ;
+                        iif( ::oWndVars:lVisible, iif( ! ::lGo, ::oBrwVars:ForceStable(), NIL ), NIL )
 
    METHOD Speed() INLINE ::nSpeed := ::InputBox( "Step delay (in tenths of a second)", ::nSpeed )
 
@@ -293,9 +335,8 @@ CREATE CLASS HBDebugger
 
    METHOD Step()
 
-   METHOD TabWidth() INLINE ;
-      ::nTabWidth := ::InputBox( "Tab width", ::nTabWidth ), ;
-      ::oBrwText:nTabWidth := ::nTabWidth, ::oBrwText:RefreshAll()
+   METHOD TabWidth() INLINE ::nTabWidth := ::InputBox( "Tab width", ::nTabWidth ), ;
+                            ::oBrwText:RefreshAll()
 
    METHOD BreakPointToggle( nLine, cFileName )
    METHOD BreakPointDelete( cPos )
@@ -306,14 +347,15 @@ CREATE CLASS HBDebugger
 
    METHOD ToCursor()
    METHOD NextRoutine()
+   METHOD StepOut()
    METHOD ViewSets()
    METHOD WndVarsLButtonDown( nMRow, nMCol )
+   METHOD WndPntLButtonDown( nMRow, nMCol )
    METHOD LineNumbers( lLineNumbers ) // Toggles numbering of source code lines
-   METHOD RemoveWindow( oWnd )
    METHOD SearchLine( cLine )
-   METHOD ToggleAnimate() INLINE ::oPullDown:GetItemByIdent( "ANIMATE" ):checked := ::lAnimate := ! ::lAnimate
+   METHOD ToggleAnimate()       INLINE ::oPullDown:GetItemByIdent( "ANIMATE" ):checked := ::lAnimate := ! ::lAnimate
    METHOD ToggleCaseSensitive() INLINE ::oPullDown:GetItemByIdent( "CASE" ):checked := ::lCaseSensitive := ! ::lCaseSensitive
-   METHOD ShowWorkAreas() INLINE __dbgShowWorkAreas( Self )
+   METHOD ShowWorkAreas()       INLINE __dbgShowWorkAreas( Self )
 
    METHOD TracepointAdd( cExpr )
    METHOD WatchpointAdd( cExpr )
@@ -329,12 +371,15 @@ CREATE CLASS HBDebugger
    METHOD VarGetValue( aVar )
    METHOD VarSetValue( aVar, uValue )
 
-   METHOD ResizeWindows( oWindow )
    METHOD NotSupported() INLINE __dbgAlert( "Not implemented yet!" )
 
    METHOD OpenDebuggerWindow()
    METHOD CloseDebuggerWindow()
-
+   METHOD SaveAppScreen()
+   METHOD RestoreAppScreen()
+   METHOD RedisplayBreakPoints()
+   METHOD SetFocusCodeWindow()
+   
 ENDCLASS
 
 
@@ -342,48 +387,65 @@ METHOD New() CLASS HBDebugger
 
    t_oDebugger := Self
 
-   /* default the search path for files to the current directory
-      that way if the source is in the same directory it will still be found even if the application
-      changes the current directory with the SET DEFAULT command. */
-   ::cPathForFiles := GetEnv( "HB_DBG_PATH" )
-   IF Empty( ::cPathForFiles )
-      ::cPathForFiles := GetEnv( "PATH" )
-   ENDIF
-   ::aPathDirs := PathToArray( ::cPathForFiles )
-
    ::lGo := ::lRunAtStartup
 
    /* Store the initial screen dimensions for now */
-   ::nMaxRow := MaxRow()
-   ::nMaxCol := MaxCol()
+   ::nMaxRow := WINDOW_HEIGHT
+   ::nMaxCol := WINDOW_WIDTH
 
    ::oPullDown := __dbgBuildMenu( Self )
 
-   ::oWndCode             := HBDbWindow():New( 1, 0, ;
-                                               ::nMaxRow - ::nCmdWndHight - 3, ;
-                                               ::nMaxCol )
-   ::oWndCode:bKeyPressed := {| nKey | ::CodeWindowProcessKey( nKey ) }
+   ::oWndCode              := HBDbWindow():New( 1, 0, ::nMaxRow - ::nCmdWndHight - 3, ::nMaxCol )
+   ::oWndCode:bKeyPressed  := {| nKey | ::CodeWindowProcessKey( nKey ) }
+   ::oWndCode:lCloseButton := .F.
+   ::oWndCode:SetFocus( .T. )
+   ::oWndCode:bGotFocus    := { || SetCursor( SC_SPECIAL1 ) }
+   ::oWndCode:bLostFocus   := { || SetCursor( SC_NONE ) }
+   ::oWndCode:bPainted     := { || ::oBrwText:RefreshAll():ForceStable(), IIf( ::oWndCode:lFocused, SetCursor( SC_SPECIAL1 ), NIL ) }
+   ::oWndCode:bLButtonDown := { || ::CodeWindowProcessKey( K_LBUTTONDOWN ) }
+   ::oCurrentWnd           := ::oWndCode
 
    AAdd( ::aWindows, ::oWndCode )
 
+   ::BuildVarsWindow()
+   ::BuildWatchWindow()
+   ::BuildStackWindow()
    ::BuildCommandWindow()
-   ::BuildBrowseStack()
+
+   ::oBrwText := HBBrwText():New( ::oWndCode:nTop + 1, ::oWndCode:nLeft + 1,;
+                                  ::oWndCode:nBottom - 1, ::oWndCode:nRight - 1, "",;
+                                  __DbgColors()[ 2 ]  + ", " + __DbgColors()[ 5 ]  + ", " + ;
+                                  __DbgColors()[ 3 ]  + ", " + __DbgColors()[ 6 ]  + ", " + ;
+                                  __DbgColors()[ 12 ] + ", " + __DbgColors()[ 13 ], ::lLineNumbers )
+
+   ::oWndCode:Browser := ::oBrwText
+   ::oWndCode:ToTop()
 
    IF hb_FileExists( ::cSettingsFileName )
       ::LoadSettings()
       ::lGo := ::lRunAtStartup // Once again after settings file is loaded
    ENDIF
+   IF Empty( ::cPathForFiles )
+      /* default the search path for files to the current directory
+         that way if the source is in the same directory it will still be found even if the application
+         changes the current directory with the SET DEFAULT command. */
+      ::cPathForFiles := GetEnv( "HB_DBG_PATH" )
+      IF Empty( ::cPathForFiles )
+         ::cPathForFiles := GetEnv( "PATH" )
+         ::aPathDirs := PathToArray( ::cPathForFiles )
+      ELSE
+         ::aPathDirs := PathsWithSubDirs( ::cPathForFiles )
+      ENDIF
+   ENDIF   
 
-   RETURN Self
+  RETURN Self
 
 METHOD PROCEDURE OpenDebuggerWindow() CLASS HBDebugger
 
    IF ! ::lDebuggerWindowIsOpen
       ::hUserWindow := hb_gtInfo( HB_GTI_GETWIN )
       IF ::hDebuggerWindow == NIL
-         ::hDebuggerWindow := hb_gtInfo( HB_GTI_GETWIN, ;
-            { "Debugger", DEBUGGER_MINROW, DEBUGGER_MINCOL, ;
-            DEBUGGER_MAXROW, DEBUGGER_MAXCOL } )
+         ::hDebuggerWindow := hb_gtInfo( HB_GTI_GETWIN, { "Debugger", DEBUGGER_MINROW, DEBUGGER_MINCOL, DEBUGGER_MAXROW, DEBUGGER_MAXCOL } )
       ELSE
          hb_gtInfo( HB_GTI_SETWIN, ::hDebuggerWindow )
       ENDIF
@@ -403,44 +465,73 @@ METHOD PROCEDURE CloseDebuggerWindow() CLASS HBDebugger
 
    RETURN
 
+METHOD PROCEDURE SaveAppScreen() CLASS HBDebugger
+
+   ::cAppScreen := __dbgSaveScreen( 0, 0, WINDOW_HEIGHT, WINDOW_WIDTH )
+
+   RETURN
+
+METHOD PROCEDURE RestoreAppScreen() CLASS HBDebugger
+
+   If ::cAppScreen != Nil
+      __dbgRestScreen( 0, 0, WINDOW_HEIGHT, WINDOW_WIDTH, ::cAppScreen )
+   EndIf
+
+   RETURN
 
 METHOD PROCEDURE Activate() CLASS HBDebugger
 
-   LOCAL lFirst := .F.
+   If ::lChangeScreen
 
-   ::LoadCallStack()
-   ::SaveAppState()
-
-   IF ::lActive
+      // Flush screen buffer
+      ::nAppDispCount := DispCount()
+      DispBegin()
       ::SaveAppScreen()
-   ELSE
-      ::lActive := .T.
+      ::SaveAppState()
+      ::OpenDebuggerWindow()
+      ::LoadCallStack()
       ::Show()
-      IF ::lShowCallStack
-         ::ShowCallStack()
-      ENDIF
-      lFirst := .T.
-   ENDIF
-   IF ::lShowCallStack
-      ::oWndStack:Show()
-   ENDIF
+      __dbgFlushScreenBuffer()
 
-   ::LoadVars()
-   ::ShowVars()
+   Else
 
-   IF ::oWndPnt != NIL
-      ::WatchpointsShow()
-   ENDIF
+      ::SaveAppScreen()
+      ::SaveAppState()
+      ::OpenDebuggerWindow()
+      ::LoadCallStack()
+      ::Show()
+      ::nAppDispCount := __dbgFlushScreenBuffer() - 1
+      If ::nAppDispCount < 0
+         ::nAppDispCount := 0
+      EndIf
 
-   // show the topmost procedure
-   ::ShowCodeLine( 1 ) // ::aCallStack[ 1 ][ HB_DBG_CS_LINE ], ::aCallStack[ 1 ][ HB_DBG_CS_MODULE ] )
-
-   // Most commands can be executed only after activation
-   IF lFirst
-      ::LoadSettings()
-   ENDIF
+   EndIf
 
    ::HandleEvent()
+
+   If ::lExchangeScreens .Or. ::lGo
+
+      ::lChangeScreen := .T.
+      ::RestoreAppScreen()
+      ::CloseDebuggerWindow()
+      ::RestoreAppState()
+      While ( ::nAppDispCount-- > 0 )
+         DispBegin()
+      EndDo
+
+
+   Else
+
+      ::lChangeScreen := .F.
+      While ( ::nAppDispCount-- > 0 )
+         DispBegin()
+      EndDo
+      DispBegin()
+      ::RestoreAppScreen()
+      ::CloseDebuggerWindow()
+      ::RestoreAppState()
+
+   EndIf
 
    RETURN
 
@@ -448,7 +539,7 @@ METHOD PROCEDURE Activate() CLASS HBDebugger
 METHOD PROCEDURE All() CLASS HBDebugger
 
    ::lShowPublics := ::lShowPrivates := ::lShowStatics := ;
-      ::lShowLocals := ::lShowGlobals := ::lAll := ! ::lAll
+   ::lShowLocals  := ::lShowGlobals  := ::lAll := ! ::lAll
 
    ::RefreshVars()
 
@@ -462,7 +553,7 @@ METHOD PROCEDURE BarDisplay() CLASS HBDebugger
    DispBegin()
 
    hb_Scroll( ::nMaxRow, 0, ::nMaxRow, ::nMaxCol,,, cClrItem )
-   hb_DispOutAt( ::nMaxRow,  0, "F1-Help F2-Zoom F3-Repeat F4-User F5-Go F6-WA F7-Here F8-Step F9-BkPt F10-Trace", cClrItem )
+   hb_DispOutAt( ::nMaxRow,  0, "F1-Help F2-Zoom F3-Repeat F4-User F5-Go F6-WA F7-Here F8-Step F9-BkPt " + TRACE_KEY_NAME + "-Trace", cClrItem )
    hb_DispOutAt( ::nMaxRow,  0, "F1", cClrHotKey )
    hb_DispOutAt( ::nMaxRow,  8, "F2", cClrHotKey )
    hb_DispOutAt( ::nMaxRow, 16, "F3", cClrHotKey )
@@ -472,7 +563,7 @@ METHOD PROCEDURE BarDisplay() CLASS HBDebugger
    hb_DispOutAt( ::nMaxRow, 46, "F7", cClrHotKey )
    hb_DispOutAt( ::nMaxRow, 54, "F8", cClrHotKey )
    hb_DispOutAt( ::nMaxRow, 62, "F9", cClrHotKey )
-   hb_DispOutAt( ::nMaxRow, 70, "F10", cClrHotKey )
+   hb_DispOutAt( ::nMaxRow, 70, TRACE_KEY_NAME, cClrHotKey )
 
    DispEnd()
 
@@ -481,40 +572,148 @@ METHOD PROCEDURE BarDisplay() CLASS HBDebugger
 
 METHOD PROCEDURE BuildBrowseStack() CLASS HBDebugger
 
-   LOCAL aColors
+   LOCAL aColors := __dbgColors()
 
-   IF ::oBrwStack == NIL
-      aColors := __dbgColors()
-      ::oBrwStack := HBDbBrowser():New( 2, ::nMaxCol - 14, ::nMaxRow - ::nCmdWndHight - 4, ::nMaxCol - 1 )
-      ::oBrwStack:ColorSpec := aColors[ 3 ] + "," + aColors[ 4 ] + "," + aColors[ 5 ] + "," + aColors[ 6 ]
-      ::oBrwStack:goTopBlock := {|| ::oBrwStack:Cargo := 1 }
-      ::oBrwStack:goBottomBlock := {|| ::oBrwStack:Cargo := Len( ::aProcStack ) }
-      ::oBrwStack:skipBlock := {| nSkip, nOld | nOld := ::oBrwStack:Cargo, ;
-         ::oBrwStack:Cargo += nSkip, ;
-         ::oBrwStack:Cargo := Min( Max( ::oBrwStack:Cargo, 1 ), ;
-         Len( ::aProcStack ) ), ::oBrwStack:Cargo - nOld }
+   ::oBrwStack := HBDbBrowser():New( IIf( ::lMenuBar, 2, 1 ), WINDOW_WIDTH - 14, WINDOW_HEIGHT - If( ::lMenuBar, 7, 6 ), WINDOW_WIDTH - 1 )
+   ::oBrwStack:ColorSpec := aColors[ 2 ] + "," + aColors[ 5 ] + "," + aColors[ 4 ]
+   ::oBrwStack:GoTopBlock    := { || ::oBrwStack:Cargo := 1 }
+   ::oBrwStack:GoBottomBlock := { || ::oBrwStack:Cargo := Len( ::aProcStack ) }
+   ::oBrwStack:SkipBlock := { | nSkip, nOld | nOld := ::oBrwStack:Cargo,;
+                                              ::oBrwStack:Cargo += nSkip,;
+                                              ::oBrwStack:Cargo := Min( Max( ::oBrwStack:Cargo, 1 ), Len( ::aProcStack ) ),;
+                                              ::oBrwStack:Cargo - nOld }
 
-      ::oBrwStack:Cargo := 1 // Actual highlighted row
+   ::oBrwStack:Cargo := 1 // Actual highligthed row
 
-      ::oBrwStack:AddColumn( HBDbColumnNew( "", {|| iif( Len( ::aProcStack ) > 0, ;
-         PadC( ::aProcStack[ ::oBrwStack:Cargo ][ HB_DBG_CS_FUNCTION ], 14 ), Space( 14 ) ) } ) )
-   ENDIF
+   ::oBrwStack:AddColumn( TBColumnNew( "", { || IIf( ::oBrwStack:Cargo > 0 .And. Len( ::aProcStack ) > 0,;
+                                                     PadC( ::aProcStack[ ::oBrwStack:Cargo, HB_DBG_CS_FUNCTION ], ::oBrwStack:nRight - ::oBrwStack:nLeft + 1 ),;
+                                                     Space( ::oBrwStack:nRight - ::oBrwStack:nLeft + 1 ) ) } ) )
 
    RETURN
 
+METHOD BuildStackWindow() CLASS HBDebugger
+
+   ::lShowCallStack = .f.
+
+   ::oWndStack := HBDbWindow():New( IIf( ::lMenuBar, 1, 0 ), WINDOW_WIDTH - 15, WINDOW_HEIGHT - If( ::lMenuBar, 6, 5 ), WINDOW_WIDTH, "Calls" )
+
+   ::oWndStack:bKeyPressed  := { | nKey | ::CallStackProcessKey( nKey ) }
+   ::oWndStack:bLButtonDown := { || ::CallStackProcessKey( K_LBUTTONDOWN ) }
+
+   AAdd( ::aWindows, ::oWndStack )
+
+   ::BuildBrowseStack()
+   ::oWndStack:Browser  := ::oBrwStack
+   ::oWndStack:bPainted := { || ::oBrwStack:RefreshAll():ForceStable(),;
+                                IIf( ::oWndStack:lFocused, SetCursor( SC_NONE ), NIL ) }
+   ::oWndStack:bGotFocus = { || SetCursor( SC_NONE ) }
+
+   RETURN NIL
+   
+METHOD BuildVarsWindow() CLASS HBDebugger
+
+   Local oCol
+
+   ::oWndVars := HBDbWindow():New( 1, 1, 1, 1, "Monitor" )
+
+   ::oWndVars:bLButtonDown := { | nMRow, nMCol | ::WndVarsLButtonDown( nMRow, nMCol ) }
+   ::oWndVars:bLDblClick   := { | nMRow, nMCol | If( ::oBrwVars:IsOver( nMRow, nMCol ),;
+                                                     ( ::WndVarsLButtonDown( nMRow, nMCol ), ::EditVar( ::oBrwVars:Cargo ) ), NIL ) }
+
+   ::oBrwVars := HBDbBrowser():New( 1, 1, 1, 1 )
+   ::oWndVars:Browser := ::oBrwVars
+
+   ::oBrwVars:Cargo         := 1 // Actual highligthed row
+   ::oBrwVars:ColorSpec     := __DbgColors()[ 2 ] + "," + __DbgColors()[ 5 ] + "," + __DbgColors()[ 3 ] + "," + __DbgColors()[ 6 ]
+   ::oBrwVars:GoTopBlock    := { || ::oBrwVars:cargo := 1 }
+   ::oBrwVars:GoBottomBlock := { || ::oBrwVars:cargo := Len( ::aVars ) }
+   ::oBrwVars:SkipBlock     := { | nSkip, nOld | nOld := ::oBrwVars:Cargo,;
+                                                 ::oBrwVars:Cargo += nSkip,;
+                                                 ::oBrwVars:Cargo := Min( Max( ::oBrwVars:Cargo, 1 ),;
+                                                                               Len( ::aVars ) ),;
+                                                 If( Len( ::aVars ) > 0, ::oBrwVars:Cargo - nOld, 0 ) }
+
+   oCol   := TBColumnNew( "", { || PadR( If( Len( ::aVars ) > 0, ;
+                                             AllTrim( Str( ::oBrwVars:Cargo -1 ) ) + ") " +  ::VarGetInfo( ::aVars[ Max( ::oBrwVars:Cargo, 1 ) ] ), ;
+                                             " " ), ;
+                                   ::oWndVars:nWidth() - 2 ) } )
+   ::oBrwVars:AddColumn( oCol )
+   oCol:DefColor:={1,2}
+
+   ::oWndVars:bPainted    := { || If( Len( ::aVars ) > 0, ::obrwVars:RefreshAll():ForceStable(), NIL ),;
+                                  If( ::oWndVars:lFocused, SetCursor( SC_NONE ), NIL ) }
+   ::oWndVars:bKeyPressed := { | nKey | ( iif( nKey == K_DOWN, ::oBrwVars:Down(), nil ) ;
+                                        , iif( nKey == K_UP, ::oBrwVars:Up(), nil ) ;
+                                        , iif( nKey == K_PGDN, ::oBrwVars:PageDown(), nil ) ;
+                                        , iif( nKey == K_PGUP, ::oBrwVars:PageUp(), nil ) ;
+                                        , iif( nKey == K_HOME, ::oBrwVars:GoTop(), nil ) ;
+                                        , iif( nKey == K_END, ::oBrwVars:GoBottom(), nil ) ;
+                                        , iif( nKey == K_ENTER, ::EditVar( ::oBrwVars:Cargo ), nil ), IIF(LEN(::aVars)>0, ::oBrwVars:ForceStable(), nil) ) }
+
+   AAdd( ::aWindows, ::oWndVars )
+
+   RETURN NIL
+
+METHOD BuildWatchWindow() CLASS HBDebugger
+
+   Local oCol
+
+   ::oWndPnt := HBDbWindow():New( 1, 1, 1, 1, "Watch" )
+
+   ::oBrwPnt := HBDbBrowser():New( 1, 1, 1, 1 )
+
+   ::oWndPnt:Browser    := ::oBrwPnt
+   ::oBrwPnt:Cargo      := 1 // Actual highligthed row
+   ::oBrwPnt:ColorSpec  := __DbgColors()[ 2 ] + "," + __DbgColors()[ 5 ] + "," + __DbgColors()[ 3 ] + "," + __DbgColors()[ 6 ]
+   ::oBrwPnt:GoTopBlock := { || ::oBrwPnt:cargo := Min( 1, Len(::aWatch) ) }
+   ::oBrwPnt:GoBottomBlock := { || ::oBrwPnt:cargo := Len( ::aWatch ) }
+   ::oBrwPnt:SkipBlock := { | nSkip, nOld | nOld := ::oBrwPnt:Cargo,;
+                            ::oBrwPnt:Cargo += nSkip,;
+                            ::oBrwPnt:Cargo := Min( Max( ::oBrwPnt:Cargo, 1 ), Len( ::aWatch ) ),;
+                            IIF( LEN(::aWatch) > 0, ::oBrwPnt:Cargo - nOld, 0 ) }
+
+   oCol := TBColumnNew( "", { || PadR( IIF( LEN( ::aWatch ) > 0, ;
+                                          AllTrim( Str( ::oBrwPnt:Cargo -1 ) ) + ") " + ;
+                                          ::WatchGetInfo( Max( ::oBrwPnt:Cargo, 1 ) ), ;
+                                          " " ), ;
+                                      ::oWndPnt:nWidth() - 2 ) } )
+   ::oBrwPnt:AddColumn( oCol )
+   oCol:DefColor:={1,2}
+
+   ::oWndPnt:bLButtonDown := { | nMRow, nMCol | ::WndPntLButtonDown( nMRow, nMCol ) }
+   ::oWndPnt:bLDblClick   := { | nMRow, nMCol | If( ::oBrwPnt:IsOver( nMRow, nMCol ),;
+                                                    ( ::WndPntLButtonDown( nMRow, nMCol ), ::WatchpointEdit( ::oBrwPnt:Cargo ) ), NIL ) }
+
+   ::oWndPnt:bPainted := { || If( Len( ::aWatch ) > 0, ::oBrwPnt:RefreshAll():ForceStable(), NIL ),;
+                              If( ::oWndPnt:lFocused, SetCursor( SC_NONE ), NIL ) }
+
+   ::oWndPnt:bKeyPressed := { | nKey | ( If( nKey == K_DOWN, ::oBrwPnt:Down(), nil ) ;
+                                       , If( nKey == K_UP, ::oBrwPnt:Up(), nil ) ;
+                                       , If( nKey == K_PGDN, ::oBrwPnt:PageDown(), nil ) ;
+                                       , If( nKey == K_PGUP, ::oBrwPnt:PageUp(), nil ) ;
+                                       , If( nKey == K_HOME, ::oBrwPnt:GoTop(), nil ) ;
+                                       , If( nKey == K_END, ::oBrwPnt:GoBottom(), nil ) ;
+                                       , If( nKey == K_DEL, ::WatchpointDel( ::oBrwPnt:Cargo ), nil ) ;
+                                       , If( nKey == K_ENTER, ::WatchpointEdit( ::oBrwPnt:Cargo ), nil );
+                                       , If( ::oWndPnt:lVisible, ::oBrwPnt:ForceStable(), NIL ) ) }
+
+   AAdd( ::aWindows, ::oWndPnt )
+
+   RETURN NIL
 
 METHOD PROCEDURE BuildCommandWindow() CLASS HBDebugger
 
    LOCAL nSize
 
-   ::oWndCommand := HBDbWindow():New( ::nMaxRow - ::nCmdWndHight - 2, 0, ;
-                                      ::nMaxRow - 1, ::nMaxCol, "Command" )
-
+   ::oWndCommand             := HBDbWindow():New( ::nMaxRow - ::nCmdWndHight - 2, 0, ::nMaxRow - 1, ::nMaxCol, "Command" )
+   ::oWndCommand:bGotFocus   := { || ::oGetCommand:showCursor() }
+   ::oWndCommand:bLostFocus  := { || SetCursor( SC_NONE ) }
    ::oWndCommand:bKeyPressed := {| nKey | ::CommandWindowProcessKey( nKey ) }
    ::oWndCommand:bPainted    := {|| ::CommandWindowDisplay(), ;
-       hb_DispOutAt( ::oWndCommand:nBottom - 1, ::oWndCommand:nLeft + 1, ;
-                     "> ", __dbgColors()[ 2 ] ), ;
-      ::oGetCommand:SetColor( __dbgColors()[ 2 ] ):display() }
+                                    hb_DispOutAt( ::oWndCommand:nBottom - 1, ::oWndCommand:nLeft + 1, "> ", __dbgColors()[ 2 ] ), ;
+                                    ::oGetCommand:newPos( ::oWndCommand:nBottom - 1, ::oWndCommand:nLeft + 3 ),;
+                                    ::oGetCommand:setWidth( ::oWndCommand:nRight - ::oWndCommand:nLeft - 3 ),;
+                                    ::oGetCommand:SetColor( __dbgColors()[ 2 ] ):display() }
    AAdd( ::aWindows, ::oWndCommand )
 
    ::aHistCommands := { "" }
@@ -523,7 +722,7 @@ METHOD PROCEDURE BuildCommandWindow() CLASS HBDebugger
 
    nSize := ::oWndCommand:nRight - ::oWndCommand:nLeft - 3
    ::oGetCommand := HbDbInput():new( ::oWndCommand:nBottom - 1, ::oWndCommand:nLeft + 3, ;
-                                     nSize, "", __dbgColors()[ 2 ], Max( nSize, 256 ) )
+                                     nSize, "", __dbgColors()[ 2 ], Max( nSize, GET_BUFFER_SIZE ) )
 
    RETURN
 
@@ -533,100 +732,83 @@ METHOD PROCEDURE CallStackProcessKey( nKey ) CLASS HBDebugger
    LOCAL n
    LOCAL nSkip
    LOCAL lUpdate := .F.
+   LOCAL nMCol
+   LOCAL nMRow
 
    SWITCH nKey
-   CASE K_HOME
-   CASE K_CTRL_PGUP
-   CASE K_CTRL_HOME
-
-      IF ::oBrwStack:Cargo > 1
+      CASE K_HOME
          ::oBrwStack:GoTop()
          ::oBrwStack:ForceStable()
-         lUpdate := .T.
-      ENDIF
-      EXIT
+         lUpdate = .t.
+         EXIT
 
-   CASE K_END
-   CASE K_CTRL_PGDN
-   CASE K_CTRL_END
-
-      IF ::oBrwStack:Cargo < Len( ::aProcStack )
+      CASE K_END
          ::oBrwStack:GoBottom()
          ::oBrwStack:ForceStable()
-         lUpdate := .T.
-      ENDIF
-      EXIT
+         lUpdate = .t.
+         EXIT
 
-   CASE K_UP
-
-      IF ::oBrwStack:Cargo > 1
+      CASE K_UP
          ::oBrwStack:Up()
          ::oBrwStack:ForceStable()
-         lUpdate := .T.
-      ENDIF
-      EXIT
+         lUpdate = .t.
+         EXIT
 
-   CASE K_DOWN
-
-      IF ::oBrwStack:Cargo < Len( ::aProcStack )
+      CASE K_DOWN
          ::oBrwStack:Down()
          ::oBrwStack:ForceStable()
-         lUpdate := .T.
-      ENDIF
-      EXIT
+         lUpdate = .t.
+         EXIT
 
-   CASE K_PGUP
-
-      ::oBrwStack:PageUp()
-      ::oBrwStack:ForceStable()
-      lUpdate := .T.
-      EXIT
-
-   CASE K_PGDN
-
-      ::oBrwStack:PageDown()
-      ::oBrwStack:ForceStable()
-      lUpdate := .T.
-      EXIT
-
-   CASE K_LBUTTONDOWN
-
-      IF ( nSkip := MRow() - ::oWndStack:nTop - ::oBrwStack:RowPos ) != 0
-         IF nSkip > 0
-            FOR n := 1 TO nSkip
-               ::oBrwStack:Down()
-               ::oBrwStack:Stabilize()
-            NEXT
-         ELSE
-            FOR n := 1 TO nSkip + 2 STEP -1
-               ::oBrwStack:Up()
-               ::oBrwStack:Stabilize()
-            NEXT
-         ENDIF
+      CASE K_PGUP
+         ::oBrwStack:PageUp()
          ::oBrwStack:ForceStable()
-      ENDIF
-      lUpdate := .T.
-      EXIT
+         lUpdate = .t.
+         EXIT
 
+      CASE K_PGDN
+         ::oBrwStack:PageDown()
+         ::oBrwStack:ForceStable()
+         lUpdate = .t.
+         EXIT
+
+      CASE K_LBUTTONDOWN
+         nMRow := MRow()
+         nMCol := MCol()
+         IF ::oWndStack:IsCloseButton( nMRow, nMCol )
+
+            ::Stack()
+
+         ELSEIF ( nMRow >= ::oBrwStack:nTop .And. nMRow <= ::oBrwStack:nBottom .And. nMCol >= ::oBrwStack:nLeft .And. nMCol <= ::oBrwStack:nRight )
+
+            IF ( nSkip := nMRow - ::oWndStack:nTop - ::oBrwStack:RowPos ) != 0
+               IF nSkip > 0
+                  FOR n = 1 to nSkip
+                     ::oBrwStack:Down()
+                     ::oBrwStack:Stabilize()
+                  NEXT
+               ELSE
+                  FOR n = 1 to nSkip + 2 step -1
+                     ::oBrwStack:Up()
+                     ::oBrwStack:Stabilize()
+                  NEXT
+               ENDIF
+               ::oBrwStack:ForceStable()
+            ENDIF
+            lUpdate = .t.
+
+         EndIf
+         EXIT
    ENDSWITCH
 
    IF lUpdate
-      IF ::oWndVars != NIL .AND. ::oWndVars:lVisible
+      DispBegin()
+      IF ::oWndVars:lVisible
          ::LoadVars()
          ::ShowVars()
       ENDIF
-
-      // jump to source line for a function
-
-#if 0
-      IF ::aCallStack[ ::oBrwStack:Cargo ][ HB_DBG_CS_LINE ] != NIL
-         ::ShowCodeLine( ::aCallStack[ ::oBrwStack:Cargo ][ HB_DBG_CS_LINE ], ::aCallStack[ ::oBrwStack:Cargo ][ HB_DBG_CS_MODULE ] )
-      ELSE
-         ::GotoLine( 1 )
-      ENDIF
-#endif
-
       ::ShowCodeLine( ::oBrwStack:Cargo )
+      DispEnd()
    ENDIF
 
    RETURN
@@ -639,26 +821,22 @@ METHOD PROCEDURE CodeblockTrace() CLASS HBDebugger
 
    RETURN
 
+METHOD PROCEDURE ExchangeScreens() CLASS HBDebugger
+
+   ::lExchangeScreens := ! ::lExchangeScreens
+   ::oPullDown:GetItemByIdent( "EXCHANGE" ):checked := ::lExchangeScreens
+
+return
+
 
 METHOD PROCEDURE CodeWindowProcessKey( nKey ) CLASS HBDebugger
-
-   IF ::oBrwText != NIL
-
-      SWITCH nKey
-      CASE K_CTRL_PGUP
-      CASE K_CTRL_HOME
-
-         ::oBrwText:GoTop()
-         EXIT
-
-      CASE K_CTRL_PGDN
-      CASE K_CTRL_END
-
-         ::oBrwText:GoBottom()
-         ::oBrwText:nCol := ::oWndCode:nLeft + 1
-         ::oBrwText:nFirstCol := ::oWndCode:nLeft + 1
-         EXIT
-
+   
+   LOCAL nMRow
+   LOCAL nMCol
+   LOCAL nSkip
+   LOCAL n
+   
+   SWITCH nKey
       CASE K_HOME
          ::oBrwText:Home()
          EXIT
@@ -691,55 +869,88 @@ METHOD PROCEDURE CodeWindowProcessKey( nKey ) CLASS HBDebugger
          ::oBrwText:PageDown()
          EXIT
 
-      ENDSWITCH
-   ENDIF
+      CASE K_CTRL_PGUP
+         ::oBrwText:goTop()
+         EXIT
+
+      CASE K_CTRL_PGDN
+         ::oBrwText:goBottom()
+         EXIT
+         
+      CASE K_LBUTTONDOWN
+         nMRow := MRow()
+         nMCol := MCol()
+
+         IF ::oWndCode:IsCloseButton( nMRow, nMCol )
+
+            ::Stack()
+
+         ELSEIF ( nMRow >= ::oBrwText:nTop .And. nMRow <= ::oBrwText:nBottom .And. nMCol >= ::oBrwText:nLeft .And. nMCol <= ::oBrwText:nRight )
+
+            IF ( nSkip := nMRow - ::oWndCode:nTop - ::oBrwText:RowPos ) != 0
+               IF nSkip > 0
+                  FOR n = 1 to nSkip
+                     ::oBrwText:Down()
+                     ::oBrwText:Stabilize()
+                  NEXT
+               ELSE
+                  FOR n = 1 to nSkip + 2 step -1
+                     ::oBrwText:Up()
+                     ::oBrwText:Stabilize()
+                  NEXT
+               ENDIF
+               ::oBrwText:ForceStable()
+            ENDIF
+         ENDIF
+         EXIT
+
+   ENDSWITCH
+   ::oBrwText:ForceStable()
 
    RETURN
 
 
 METHOD PROCEDURE Colors() CLASS HBDebugger
 
-   LOCAL oWndColors := HBDbWindow():New( 4, 5, 16, ::nMaxCol - 5, ;
-      "Debugger Colors[1..11]", ::ClrModal() )
-   LOCAL aColors := { ;
-      "Border", "Text", "Text High", "Text PPO", "Text Selected", ;
-      "Text High Sel.", "Text PPO Sel.", "Menu", "Menu High", ;
-      "Menu Selected", "Menu High Sel." }
+   LOCAL oWndColors := HBDbWindow():New( 4, 5, 16, ::nMaxCol - 5, "Debugger Colors[1..13]", ::ClrModal() )
+   local aColors := { { 01, "Border"         }, { 02, "Text"                  }, { 03, "Text High"      },;
+                      { 04, "Text PPO"       }, { 05, "Text Selected"         }, { 06, "Text High Sel." },;
+                      { 07, "Text PPO Sel."  }, { 09, "Menu"                  }, { 09, "Menu High"      },;
+                      { 10, "Menu Selected"  }, { 11, "Menu High Sel."        }, { 12, "Current Line"   },;
+                      { 13, "Current Line With Break"  } }
 
-   LOCAL oBrwColors := HBDbBrowser():New( oWndColors:nTop + 1, oWndColors:nLeft + 1, ;
-      oWndColors:nBottom - 1, oWndColors:nRight - 1 )
-   LOCAL nWidth := oWndColors:nRight - oWndColors:nLeft - 1
+   LOCAL oBrwColors := HBDbBrowser():New( oWndColors:nTop + 1, oWndColors:nLeft + 1, oWndColors:nBottom - 1, oWndColors:nRight - 1 )
+   LOCAL nWidth     := oWndColors:nRight - oWndColors:nLeft - 1
    LOCAL oCol
 
    IF ::lMonoDisplay
       __dbgAlert( "Monochrome display" )
-      RETURN
+         RETURN
    ENDIF
 
-   oBrwColors:Cargo := { 1, {} }  // Actual highlighted row
-   oBrwColors:ColorSpec := ::ClrModal()
-   oBrwColors:goTopBlock := {|| oBrwColors:cargo[ 1 ] := 1 }
-   oBrwColors:goBottomBlock := {|| oBrwColors:cargo[ 1 ] := Len( oBrwColors:cargo[ 2 ][ 1 ] ) }
-   oBrwColors:skipBlock := {| nPos | ( nPos := ArrayBrowseSkip( nPos, oBrwColors ), oBrwColors:cargo[ 1 ] := ;
-      oBrwColors:cargo[ 1 ] + nPos, nPos ) }
+   oBrwColors:Cargo         := 1 // Actual highligthed row
+   oBrwColors:ColorSpec     := ::ClrModal()
+   oBrwColors:GoTopBlock    := { || oBrwColors:cargo := 1 }
+   oBrwColors:GoBottomBlock := { || oBrwColors:cargo := Len( aColors ) }
+   oBrwColors:SkipBlock     := { | nSkip, nOld | nOld := oBrwColors:Cargo,;
+                                                 oBrwColors:Cargo += nSkip,;
+                                                 oBrwColors:Cargo := Min( Max( oBrwColors:Cargo, 1 ),;
+                                                 Len( aColors ) ), oBrwColors:Cargo - nOld }
 
-   oBrwColors:AddColumn( oCol := HBDbColumnNew( "", {|| aColors[ oBrwColors:Cargo[ 1 ] ] } ) )
-   oCol:Width := 14
-   oCol:defColor := { 1, 2 }
-   AAdd( oBrwColors:Cargo[ 2 ], aColors )
-   oBrwColors:AddColumn( oCol := HBDbColumnNew( "", ;
-      {|| PadR( '"' + ::aColors[ oBrwColors:Cargo[ 1 ] ] + '"', nWidth - 15 ) } ) )
-   AAdd( oBrwColors:Cargo[ 2 ], aColors )
-   oCol:defColor := { 1, 3 }
-   oCol:Width := 50
-   oBrwColors:autolite := .F.
+   oCol := TBColumnNew( "", { || PadR( aColors[ oBrwColors:Cargo, 2 ], 23 ) } )                                              
+   oBrwColors:AddColumn( oCol )
+   oCol:width    := 23 
+   oCol:DefColor := { 1, 2 }
+   oCol := TBColumnNew( "", { || PadR( '"' + __DbgColors()[ oBrwColors:Cargo ] + '"', nWidth - 24 ) } )
+   oBrwColors:AddColumn( oCol )
+   oCol:DefColor       := { 1, 3 } 
+   ocol:width          := 42
+   oBrwColors:autolite := .T.
 
-   oWndColors:bPainted    := {|| oBrwColors:ForceStable(), RefreshVarsS( oBrwColors ) }
-
-   oWndColors:bKeyPressed := {| nKey | SetsKeyPressed( nKey, oBrwColors, ;
-      Len( aColors ), oWndColors, "Debugger Colors", ;
-      {|| ::EditColor( oBrwColors:Cargo[ 1 ], oBrwColors ) } ) }
-
+   oWndColors:Browser     := oBrwColors
+   oWndColors:bPainted    := { || oBrwColors:RefreshAll():ForceStable(), HiLiteRow( oBrwColors ) }
+   oWndColors:bKeyPressed := { | nKey | SetsKeyPressed( aColors, nKey, oBrwColors, oWndColors, "Debugger Colors",;
+                                                        { || ::EditColor( oBrwColors:Cargo, oBrwColors ) } ) }
    oWndColors:ShowModal()
 
    ::LoadColors()
@@ -779,42 +990,55 @@ METHOD PROCEDURE CommandWindowProcessKey( nKey ) CLASS HBDebugger
 
    LOCAL cCommand
    LOCAL n
+   LOCAL nRow
+   LOCAL nCol
+
+   If ! ::oWndCommand:lFocused
+      nRow := Row()
+      nCol := Col()
+   EndIf
 
    SWITCH nKey
-   CASE K_UP
-   CASE K_F3
-      IF ::nCommand > 1
-         ::aLastCommands[ ::nCommand ] := RTrim( ::oGetCommand:getValue() )
-         ::oGetCommand:setValue( ::aLastCommands[ --::nCommand ] ):display()
-      ENDIF
-      EXIT
-   CASE K_DOWN
-      IF ::nCommand < Len( ::aLastCommands )
-         ::aLastCommands[ ::nCommand ] := RTrim( ::oGetCommand:getValue() )
-         ::oGetCommand:setValue( ::aLastCommands[ ++::nCommand ] ):display()
-      ENDIF
-      EXIT
-   CASE K_ENTER
-      cCommand := RTrim( ::oGetCommand:getValue() )
-      IF ! Empty( cCommand )
-         IF ( n := hb_AScan( ::aLastCommands, cCommand, , , .T. ) ) > 0 .AND. n < Len( ::aLastCommands )
-            hb_ADel( ::aLastCommands, n, .T. )
+      CASE K_UP
+      CASE K_F3
+         IF ::nCommand > 1
+            ::aLastCommands[ ::nCommand ] := RTrim( ::oGetCommand:getValue() )
+            ::oGetCommand:setValue( ::aLastCommands[ --::nCommand ] ):display()
          ENDIF
-         ::nCommand := Len( ::aLastCommands )
-         ::aLastCommands[ ::nCommand ] := cCommand
-         AAdd( ::aLastCommands, "" )
-         ::nCommand := Len( ::aLastCommands )
-         ::CommandWindowDisplay( cCommand, .T. )
-         ::DoCommand( cCommand )
-      ENDIF
-      hb_DispOutAt( ::oWndCommand:nBottom - 1, ::oWndCommand:nLeft + 1, ;
-                    PadR( "> ", ::oWndCommand:nRight - ::oWndCommand:nLeft - 1 ), ;
-                    __dbgColors()[ 2 ] )
-      ::oGetCommand:setValue( "" ):display()
-      EXIT
-   OTHERWISE
-      ::oGetCommand:applyKey( nKey )
+         EXIT
+      CASE K_DOWN
+         IF ::nCommand < Len( ::aLastCommands )
+            ::aLastCommands[ ::nCommand ] := RTrim( ::oGetCommand:getValue() )
+            ::oGetCommand:setValue( ::aLastCommands[ ++::nCommand ] ):display()
+         ENDIF
+         EXIT
+      CASE K_ENTER
+         cCommand := RTrim( ::oGetCommand:getValue() )
+         IF ! Empty( cCommand )
+            IF ( n := hb_AScan( ::aLastCommands, cCommand, , , .T. ) ) > 0 .AND. n < Len( ::aLastCommands )
+               hb_ADel( ::aLastCommands, n, .T. )
+            ENDIF
+            ::nCommand := Len( ::aLastCommands )
+            ::aLastCommands[ ::nCommand ] := cCommand
+            AAdd( ::aLastCommands, "" )
+            ::nCommand := Len( ::aLastCommands )
+            ::CommandWindowDisplay( cCommand, .T. )
+            ::DoCommand( cCommand )
+         ENDIF
+         hb_DispOutAt( ::oWndCommand:nBottom - 1, ::oWndCommand:nLeft + 1, ;
+                       PadR( "> ", ::oWndCommand:nRight - ::oWndCommand:nLeft - 1 ), ;
+                       __dbgColors()[ 2 ] )
+         ::oGetCommand:setValue( "" ):display()
+         EXIT
+      OTHERWISE
+         ::oGetCommand:applyKey( nKey )
    ENDSWITCH
+   
+   IF ::oWndCommand:lFocused
+      ::oGetCommand:showCursor()
+   ELSE
+      SetPos( nRow, nCol )
+   ENDIF   
 
    RETURN
 
@@ -833,9 +1057,8 @@ METHOD DoCommand( cCommand ) CLASS HBDebugger
    LOCAL cParams := ""
    LOCAL cResult
    LOCAL lValid
-   LOCAL oWindow
    LOCAL n
-
+   LOCAL nAt
    cCommand := AllTrim( cCommand )
 
    DO CASE
@@ -868,9 +1091,7 @@ METHOD DoCommand( cCommand ) CLASS HBDebugger
       aCmnd[ WP_TYPE ] := cCommand
       aCmnd[ WP_EXPR ] := cParams
 
-      ::RestoreAppState()
       cResult := ::GetExprValue( cParams, @lValid )
-      ::SaveAppState()
 
       IF aCmnd[ WP_TYPE ] == "??"
          IF lValid
@@ -880,20 +1101,26 @@ METHOD DoCommand( cCommand ) CLASS HBDebugger
       ELSEIF lValid
          cResult := __dbgValToStr( cResult )
       ENDIF
-      ::RefreshVars()
+      
+      // Refresh watchpoint
+      If ::oWndPnt:lVisible
+         ::oWndPnt:Refresh()
+      EndIf
+
+      // Refresh vars
+      If ::oWndVars:lVisible
+         ::oWndVars:Refresh()
+      EndIf
 
    CASE hb_LeftEqN( "ANIMATE", cCommand, 4 )
-      IF ::lActive
-         ::lAnimate := .T.
-         ::Animate()
-      ENDIF
+      ::lAnimate := .T.
+      ::Animate()
 
    CASE cCommand == "BP"
       IF Empty( cParam1 )
          ::BreakPointToggle()
       ELSEIF IsDigit( cParam1 )
-         ::BreakPointToggle( Val( cParam1 ), ;
-                             iif( Empty( cParam2 ), ::cPrgName, cParam2 ) )
+         ::BreakPointToggle( Val( cParam1 ),  iif( Empty( cParam2 ), ::cPrgName, cParam2 ) )
       ELSEIF hb_asciiIsAlpha( cParam1 ) .OR. hb_LeftEq( cParam1, "_" )
          ::BreakPointFunc( cParam1 )
       ENDIF
@@ -958,8 +1185,7 @@ METHOD DoCommand( cCommand ) CLASS HBDebugger
    CASE hb_LeftEqN( "INPUT", cCommand, 4 )
       IF Empty( cParams )
          cParams := AllTrim( ::InputBox( "File name",, ;
-                                         {| cFile | hb_FileExists( cFile ) .OR. ;
-                                                    ( __dbgAlert( "File unavailable" ), .F. ) } ) )
+                                         {| cFile | hb_FileExists( cFile ) .OR. ( __dbgAlert( "File unavailable" ), .F. ) } ) )
          IF LastKey() == K_ESC
             cParams := ""
          ENDIF
@@ -1029,65 +1255,64 @@ METHOD DoCommand( cCommand ) CLASS HBDebugger
 
    CASE cCommand == "NUM"
       SWITCH cParam1
-      CASE "OFF"
-         ::LineNumbers( .F. ) ; EXIT
-      CASE "ON"
-         ::LineNumbers( .T. ) ; EXIT
-      OTHERWISE
-         ::LineNumbers() ; EXIT
+         CASE "OFF"
+            ::LineNumbers( .F. ) ; EXIT
+         CASE "ON"
+            ::LineNumbers( .T. ) ; EXIT
+         OTHERWISE
+            ::LineNumbers() ; EXIT
       ENDSWITCH
 
    CASE hb_LeftEq( "OPTIONS", cCommand )
       DO CASE
-      CASE Empty( cParam1 )
-         ::OpenMenu( cCommand )
-      CASE hb_LeftEq( "PREPROCESSEDCODE", cParam1 )
-         ::OpenPPO()
-      CASE hb_LeftEq( "LINENUMBERS", cParam1 )
-         ::LineNumbers()
-      CASE hb_LeftEq( "EXCHANGESCREENS", cParam1 ) .OR. ;
-           hb_LeftEq( "SWAPONINPUT", cParam1 ) .OR. ;
-           hb_LeftEq( "MENUBAR", cParam1 )
-         ::NotSupported()
-      CASE hb_LeftEq( "CODEBLOCKTRACE", cParam1 )
-         ::CodeblockTrace()
-      CASE hb_LeftEq( "MONODISPLAY", cParam1 )
-         ::MonoDisplay()
-      CASE hb_LeftEq( "COLORS", cParam1 )
-         IF Empty( cParam2 )
-            ::Colors()
-         ELSE
-            cParam2 := SubStr( cParam2, At( "{", cParam2 ) + 1 )
-            FOR n := 1 TO 11
-               IF "," $ cParam2
-                  ::aColors[ n ] := ;
-                     StrTran( Left( cParam2, At( ",", cParam2 ) - 1 ), '"' )
-                  cParam2 := SubStr( cParam2, At( ",", cParam2 ) + 1 )
-               ELSE
-                  ::aColors[ n ] := ;
-                     StrTran( Left( cParam2, At( "}", cParam2 ) - 1 ), '"' )
-               ENDIF
-            NEXT
-            ::LoadColors()
-         ENDIF
-      CASE hb_LeftEq( "TABWIDTH", cParam1 )
-         IF IsDigit( cParam2 )
-            ::nTabWidth := Min( Val( cParam2 ), 16 )
-         ELSE
-            ::TabWidth()
-         ENDIF
-      CASE hb_LeftEq( "PATHFORFILES", cParam1 )
-         ::PathForFiles( AllTrim( cParam2 ) )
-      CASE hb_LeftEq( "RUNATSTARTUP", cParam1 )
-         ::RunAtStartup( .T. )
-      CASE hb_LeftEq( "NORUNATSTARTUP", cParam1 )
-         ::RunAtStartup( .F. )
-      CASE hb_LeftEq( "SAVESETTINGS", cParam1 )
-         ::SaveSettings( AllTrim( cParam2 ) )
-      CASE hb_LeftEq( "RESTORESETTINGS", cParam1 )
-         ::RestoreSettings( AllTrim( cParam2 ) )
-      OTHERWISE
-         cResult := "Command error"
+         CASE Empty( cParam1 )
+            ::OpenMenu( cCommand )
+         CASE hb_LeftEq( "PREPROCESSEDCODE", cParam1 )
+            ::OpenPPO()
+         CASE hb_LeftEq( "LINENUMBERS", cParam1 )
+            ::LineNumbers()
+         CASE hb_LeftEq( "EXCHANGESCREENS", cParam1 ) .OR. ;
+              hb_LeftEq( "SWAPONINPUT", cParam1 ) .OR. ;
+              hb_LeftEq( "MENUBAR", cParam1 )
+            ::NotSupported()
+         CASE hb_LeftEq( "CODEBLOCKTRACE", cParam1 )
+            ::CodeblockTrace()
+         CASE hb_LeftEq( "MONODISPLAY", cParam1 )
+            ::MonoDisplay()
+         CASE hb_LeftEq( "COLORS", cParam1 )
+            IF Empty( cParam2 )
+               ::Colors()
+            ELSE
+               cParam2 := SubStr( cParam2, At( "{", cParam2 ) + 1 )
+               n       := 1
+               nAt     := At( ",", cParam2 )
+               While nAt > 0
+                  ::aColors[ n++ ] := StrTran( Left( cParam2, nAt - 1 ), '"', "" )
+                   cParam2 := SubStr( cParam2, nAt + 1 )
+                   nAt     := At( ",", cParam2 )
+               EndDo
+               nAt            := At( "}", cParam2 )
+               ::aColors[ n ] := StrTran( Left( cParam2, nAt - 1 ), '"', "" )
+               ::LoadColors()
+            ENDIF
+         CASE hb_LeftEq( "TABWIDTH", cParam1 )
+            IF IsDigit( cParam2 )
+               ::nTabWidth := Min( Val( cParam2 ), 16 )
+            ELSE
+               ::TabWidth()
+            ENDIF
+         CASE hb_LeftEq( "PATH", cParam1 )
+            ::PathForFiles( AllTrim( cParam2 ) )
+         CASE hb_LeftEq( "RUNATSTARTUP", cParam1 )
+            ::RunAtStartup( .T. )
+         CASE hb_LeftEq( "NORUNATSTARTUP", cParam1 )
+            ::RunAtStartup( .F. )
+         CASE hb_LeftEq( "SAVESETTINGS", cParam1 )
+            ::SaveSettings( AllTrim( cParam2 ) )
+         CASE hb_LeftEq( "RESTORESETTINGS", cParam1 )
+            ::RestoreSettings( AllTrim( cParam2 ) )
+         OTHERWISE
+            cResult := "Command error"
       ENDCASE
 
    CASE hb_LeftEqN( "OUTPUT", cCommand, 4 )
@@ -1122,29 +1347,31 @@ METHOD DoCommand( cCommand ) CLASS HBDebugger
 
    CASE hb_LeftEq( "RUN", cCommand )
       DO CASE
-      CASE Empty( cParam1 )
-         ::OpenMenu( cCommand )
-      CASE hb_LeftEq( "ANIMATE", cParam1 )
-         ::ToggleAnimate()
-         ::Animate()
-      CASE hb_LeftEq( "STEP", cParam1 )
-         ::Step()
-      CASE hb_LeftEq( "TRACE", cParam1 )
-         ::Trace()
-      CASE hb_LeftEq( "GO", cParam1 )
-         ::Go()
-      CASE hb_LeftEq( "TOCURSOR", cParam1 )
-         ::ToCursor()
-      CASE hb_LeftEq( "NEXTROUTINE", cParam1 )
-         ::NextRoutine()
-      CASE hb_LeftEq( "SPEED", cParam1 )
-         IF IsDigit( cParam2 )
-            ::nSpeed := Min( Val( cParam2 ), 65534 )
-         ELSE
-            ::Speed()
-         ENDIF
-      OTHERWISE
-         cResult := "Command error"
+         CASE Empty( cParam1 )
+            ::OpenMenu( cCommand )
+         CASE hb_LeftEq( "ANIMATE", cParam1 )
+            ::ToggleAnimate()
+            ::Animate()
+         CASE hb_LeftEq( "STEP", cParam1 )
+            ::Step()
+         CASE hb_LeftEq( "TRACE", cParam1 )
+            ::Trace()
+         CASE hb_LeftEq( "GO", cParam1 )
+            ::Go()
+         CASE hb_LeftEq( "TOCURSOR", cParam1 )
+            ::ToCursor()
+         CASE hb_LeftEq( "NEXTROUTINE", cParam1 )
+            ::NextRoutine()
+         CASE hb_LeftEq( "STEPOUT", cParam1 )
+            ::StepOut()
+         CASE hb_LeftEq( "SPEED", cParam1 )
+            IF IsDigit( cParam2 )
+               ::nSpeed := Min( Val( cParam2 ), 65534 )
+            ELSE
+               ::Speed()
+            ENDIF
+         OTHERWISE
+            cResult := "Command error"
       ENDCASE
 
    CASE hb_LeftEqN( "SPEED", cCommand, 4 )
@@ -1184,36 +1411,41 @@ METHOD DoCommand( cCommand ) CLASS HBDebugger
          ::NextWindow()
       CASE hb_LeftEq( "PREV", cParam1 )
          ::PrevWindow()
-      CASE hb_LeftEq( "MOVE", cParam1 )
-         IF Empty( cParam2 )
-            ::NotSupported()
-         ELSE
-            oWindow := ::aWindows[ ::nCurrentWindow ]
-            IF ( n := At( " ", cParam2 ) ) > 0
-               n := Val( SubStr( cParam2, n ) )
-            ENDIF
-            oWindow:Resize( Val( cParam2 ), n, ;
-               oWindow:nBottom + Val( cParam2 ) - oWindow:nTop, ;
-               oWindow:nRight + n - oWindow:nLeft )
-            ::lWindowsAutoSized := .F.
-         ENDIF
-      CASE hb_LeftEq( "SIZE", cParam1 )
-         IF Empty( cParam2 )
-            ::NotSupported()
-         ELSE
-            IF Val( cParam2 ) >= 2 .AND. ;
-              ( n := At( " ", cParam2 ) ) > 0 .AND. Val( SubStr( cParam2, n ) ) > 0
-               oWindow := ::aWindows[ ::nCurrentWindow ]
-               oWindow:Resize( oWindow:nTop, oWindow:nLeft, ;
-                               Val( cParam2 ) - 1 + oWindow:nTop, ;
-                               Val( SubStr( cParam2, n ) ) - 1 + oWindow:nLeft )
-               ::lWindowsAutoSized := .F.
-            ENDIF
-         ENDIF
-      CASE hb_LeftEq( "ZOOM", cParam1 ) .OR. ;
-           hb_LeftEq( "ICONIZE", cParam1 ) .OR. ;
-           hb_LeftEq( "TILE", cParam1 )
-         ::NotSupported()
+      //CASE hb_LeftEq( "MOVE", cParam1 )
+      //   IF Empty( cParam2 )
+      //      ::NotSupported()
+      //   ELSE
+      //      oWindow := ::aWindows[ ::nCurrentWindow ]
+      //      IF ( n := At( " ", cParam2 ) ) > 0
+      //         n := Val( SubStr( cParam2, n ) )
+      //      ENDIF
+      //      oWindow:Resize( Val( cParam2 ), n, ;
+      //         oWindow:nBottom + Val( cParam2 ) - oWindow:nTop, ;
+      //         oWindow:nRight + n - oWindow:nLeft )
+      //      ::lWindowsAutoSized := .F.
+      //   ENDIF
+      //CASE hb_LeftEq( "SIZE", cParam1 )
+      //   IF Empty( cParam2 )
+      //      ::NotSupported()
+      //   ELSE
+      //      IF Val( cParam2 ) >= 2 .AND. ;
+      //        ( n := At( " ", cParam2 ) ) > 0 .AND. Val( SubStr( cParam2, n ) ) > 0
+      //         oWindow := ::aWindows[ ::nCurrentWindow ]
+      //         oWindow:Resize( oWindow:nTop, oWindow:nLeft, ;
+      //                         Val( cParam2 ) - 1 + oWindow:nTop, ;
+      //                         Val( SubStr( cParam2, n ) ) - 1 + oWindow:nLeft )
+      //         ::lWindowsAutoSized := .F.
+      //      ENDIF
+      //   ENDIF
+      CASE hb_LeftEq( "ZOOM", cParam1 )
+         ::Zoom()
+         
+      CASE hb_LeftEq( "ICONIZE", cParam1 )
+         ::Iconize()
+         
+      CASE hb_LeftEq( "TILE", cParam1 )
+         ::Tile()
+         
       OTHERWISE
          cResult := "Command error"
       ENDCASE
@@ -1226,14 +1458,11 @@ METHOD DoCommand( cCommand ) CLASS HBDebugger
 
    ENDCASE
 
-   IF ::lActive
-
+   IF ! Empty( cResult ) .And. ::oWndCommand:lVisible
       hb_DispOutAt( ::oWndCommand:nBottom - 1, ::oWndCommand:nLeft + 1, ;
                     Space( ::oWndCommand:nRight - ::oWndCommand:nLeft - 1 ), ;
                     __dbgColors()[ 2 ] )
-      IF ! Empty( cResult )
-         ::CommandWindowDisplay( cResult, .F. )
-      ENDIF
+      ::CommandWindowDisplay( cResult, .F. )
    ENDIF
 
    RETURN cResult
@@ -1241,17 +1470,19 @@ METHOD DoCommand( cCommand ) CLASS HBDebugger
 
 METHOD PROCEDURE DoScript( cFileName ) CLASS HBDebugger
 
-   LOCAL nPos
    LOCAL cLine
+   LOCAL oErr
+
 
    IF hb_FileExists( cFileName )
       FOR EACH cLine IN __dbgTextToArray( MemoRead( cFileName ) )
-         cLine := AllTrim( cLine )
-         IF ::lActive .OR. ( ( nPos := At( " ", cLine ) ) > 0 .AND. ;
-            hb_LeftEqI( "OPTIONS", Left( cLine, nPos - 1 ) ) )
-            // In inactive debugger, only "OPTIONS" commands can be executed safely
-            ::DoCommand( cLine )
-         ENDIF
+         BEGIN SEQUENCE WITH {| oErr | Break( oErr ) }
+            ::DoCommand( AllTrim( cLine ) )
+         RECOVER USING oErr
+            If ::oWndCommand != Nil .And. ::oWndCommand:lVisible
+               ::CommandWindowDisplay( oErr:description, .F. )
+            EndIf   
+         END SEQUENCE
       NEXT
    ENDIF
 
@@ -1260,15 +1491,14 @@ METHOD PROCEDURE DoScript( cFileName ) CLASS HBDebugger
 
 METHOD PROCEDURE EditColor( nColor, oBrwColors ) CLASS HBDebugger
 
-   LOCAL cColor := '"' + ::aColors[ nColor ] + '"'
+   local cColor := PadR( '"' + ::aColors[ nColor ] + '"', oBrwColors:getColumn(2):Width )
 
    oBrwColors:RefreshCurrent()
    oBrwColors:ForceStable()
 
-   IF __dbgInput( Row(), oBrwColors:nLeft + oBrwColors:GetColumn( 1 ):width + 1, ;
-                  oBrwColors:getColumn( 2 ):Width, ;
+   IF __dbgInput( Row(), oBrwColors:nLeft + oBrwColors:GetColumn( 1 ):width + 2, oBrwColors:getColumn( 2 ):Width,;
                   @cColor, __dbgExprValidBlock( "C" ), ;
-                  SubStr( ::ClrModal(), 5 ) )
+                  SubStr( ::ClrModal(), 3 ) )
       ::aColors[ nColor ] := &cColor
    ENDIF
 
@@ -1289,7 +1519,7 @@ METHOD PROCEDURE EditSet( nSet, oBrwSets ) CLASS HBDebugger
    IF __dbgInput( Row(), oBrwSets:nLeft + oBrwSets:GetColumn( 1 ):width + 1, ;
                   oBrwSets:getColumn( 2 ):Width, ;
                   @cSet, __dbgExprValidBlock( cType ), ;
-                  SubStr( ::ClrModal(), 5 ), 256 )
+                  SubStr( ::ClrModal(), 3 ), GET_BUFFER_SIZE )
       Set( nSet, &cSet )
    ENDIF
 
@@ -1301,16 +1531,15 @@ METHOD PROCEDURE EditSet( nSet, oBrwSets ) CLASS HBDebugger
 
 METHOD PROCEDURE EditVar( nVar ) CLASS HBDebugger
 
-   LOCAL cVarName := ::aVars[ nVar ][ 1 ]
+   LOCAL cVarName  := ::aVars[ nVar, 1 ]
+   LOCAL uVarValue := ::VarGetValue( ::aVars[ nVar ] )
    LOCAL cVarStr
    LOCAL oErr
 
-   LOCAL uVarValue := ::VarGetValue( ::aVars[ nVar ] )
-
    IF ValType( uVarValue ) $ "AHOPB"
-      ::InputBox( cVarName, uVarValue,, .F. )
+      ::EditValue( cVarName, uVarValue, .F. )
    ELSE
-      cVarStr := ::InputBox( cVarName, __dbgValToExp( uVarValue ), __dbgExprValidBlock() )
+      cVarStr := ::EditValue( cVarName, uVarValue )
 
       IF LastKey() != K_ESC
          BEGIN SEQUENCE WITH __BreakBlock()
@@ -1323,6 +1552,9 @@ METHOD PROCEDURE EditVar( nVar ) CLASS HBDebugger
 
    ::oBrwVars:RefreshCurrent()
    ::oBrwVars:ForceStable()
+   IF ::oWndPnt:lVisible
+      ::oWndPnt:Refresh()
+   ENDIF
 
    RETURN
 
@@ -1339,24 +1571,25 @@ METHOD GetExprValue( xExpr, lValid ) CLASS HBDebugger
 
    LOCAL xResult
    LOCAL oErr
+   LOCAL nLastKey := LastKey()
 
    lValid := .F.
-
-   xResult := __dbgGetExprValue( ::pInfo, xExpr, @lValid )
+   ::RestoreAppState()
+   xResult := __dbgGetExprValue( ::pInfo, xExpr, @lValid, ::aProcStack[ ::oBrwStack:cargo, HB_DBG_CS_STACKINDEX ] )
    IF ! lValid
       oErr := xResult
       IF oErr:ClassName() == "ERROR"
          xResult := oErr:operation + ": " + oErr:description
          IF HB_ISARRAY( oErr:args )
             xResult += "; arguments:"
-            AEval( oErr:args, {| x, i | xResult += iif( i == 1, " ", ", " ) + ;
-                                                   __dbgValToStr( x ) } )
+            AEval( oErr:args, {| x, i | xResult += iif( i == 1, " ", ", " ) + __dbgValToStr( x ) } )
          ENDIF
       ELSE
          xResult := "Syntax error"
       ENDIF
    ENDIF
-
+   ::SaveAppState()
+   hb_keySetLast( nLastKey )
    RETURN xResult
 
 
@@ -1380,11 +1613,7 @@ METHOD PROCEDURE Go() CLASS HBDebugger
 
    // we are starting to run again so reset to the deepest call if
    // displaying stack
-   IF ::oBrwStack != NIL
-      ::oBrwStack:GoTop()
-   ENDIF
-   ::RestoreAppScreen()
-   ::RestoreAppState()
+   ::oBrwStack:GoTop()
    __dbgSetGo( ::pInfo )
    ::Exit()
 
@@ -1393,7 +1622,24 @@ METHOD PROCEDURE Go() CLASS HBDebugger
 
 METHOD PROCEDURE GotoLine( nLine ) CLASS HBDebugger
 
+   DispBegin()
+
+   if ::oWndVars:lVisible
+      ::oBrwVars:ForceStable()
+   endif
+
+   if ::oWndPnt:lVisible
+      ::oBrwPnt:ForceStable()
+   endif
+
+   if ::oWndStack:lVisible
+      ::oBrwStack:ForceStable()
+   endif
+
    ::oBrwText:GotoLine( nLine )
+   ::oWndCode:Refresh()
+
+   DispEnd()
 
    RETURN
 
@@ -1422,89 +1668,104 @@ METHOD PROCEDURE HandleEvent() CLASS HBDebugger
 
    DO WHILE ! ::lEnd
 
-      IF ::oWndCommand:lFocused
-         ::oGetCommand:showCursor()
-      ELSEIF ::oWndCode:lFocused .AND. ::oBrwText != NIL
-         ::oBrwText:ForceStable()
-         SetCursor( SC_SPECIAL1 )
-      ELSE
-         SetCursor( SC_NONE )
-      ENDIF
       nKey := __dbgInkey()
-      SetCursor( SC_NONE )
 
       IF nKey == K_ALT_X
          t_oDebugger:Quit()
       ELSEIF ::oPullDown:IsOpen()
          ::oPullDown:ProcessKey( nKey )
          IF ::oPullDown:nOpenPopup == 0 // Closed
-            ::aWindows[ ::nCurrentWindow ]:Show( .T. )
+            DispBegin()
+            ::oCurrentWnd:refreshAll()
+            ::oCurrentWnd:SetFocus( .T. )
+            DispEnd()
          ENDIF
       ELSE
          SWITCH nKey
          CASE K_LDBLCLK
 
-            IF MRow() != 0 .AND. MRow() != ::nMaxRow
+            nMRow := MRow()
+            nMCol := MCol()
+            IF nMRow > If( ::lMenuBar, 0, -1 ) .And. nMRow < ::nMaxRow + If( ::lMenuBar, 0, 1 )
 
-               nMRow := MRow()
-               nMCol := MCol()
-               FOR EACH oWnd IN ::aWindows
-                  IF oWnd:IsOver( nMRow, nMCol )
-                     IF ! oWnd:lFocused
-                        ::aWindows[ ::nCurrentWindow ]:Show( .F. )
-                        ::nCurrentWindow := oWnd:__enumIndex()
-                        oWnd:Show( .T. )
-                     ENDIF
-                     oWnd:LDblClick( nMRow, nMCol )
-                     EXIT
-                  ENDIF
-               NEXT
+               oWnd := ::oCurrentWnd:WindowIsOver( nMRow, nMCol )
+               If oWnd != NIL
+ 
+                  If oWnd:lFocused
+ 
+                     If oWnd:IsCaption( nMRow, nMCol )
+                        ::Zoom()
+                     EndIf
+ 
+                  ElseIf ! oWnd:IsCloseButton( nMRow, nMCol )
+ 
+                     ::oCurrentWnd := oWnd
+                     ::oCurrentWnd:ToTop():SetFocus( .t. )
+ 
+                  EndIf
+                  oWnd:LDblClick( nMRow, nMCol )
+ 
+               EndIf
             ENDIF
             EXIT
 
          CASE K_LBUTTONDOWN
 
-            IF MRow() == 0
-
-               IF ( nPopup := ::oPullDown:GetItemOrdByCoors( 0, MCol() ) ) != 0
+            nMRow := MRow()
+            nMCol := MCol()
+            if nMRow == If( ::lMenuBar, 0, -1 )
+               if ( nPopup := ::oPullDown:GetItemOrdByCoors( 0, nMCol ) ) != 0
+                  DispBegin()
+                  if ! ::oPullDown:IsOpen()
+                     if ::oCurrentWnd:lFocused .And. HB_ISEVALITEM( ::oCurrentWnd:bLostFocus )
+                        Eval( ::oCurrentWnd:bLostFocus )
+                     endif
+                     SetCursor( SC_NONE )
+                  endif
+                  If ! ::lMenuBar
+                     ::ShowMenuBar()
+                  EndIf
                   ::oPullDown:ShowPopup( nPopup )
-               ENDIF
-
-            ELSEIF MRow() != ::nMaxRow
-
-               nMRow := MRow()
-               nMCol := MCol()
-               FOR EACH oWnd IN ::aWindows
-                  IF oWnd:IsOver( nMRow, nMCol )
-                     IF ! oWnd:lFocused
-                        ::aWindows[ ::nCurrentWindow ]:Show( .F. )
-                        ::nCurrentWindow := oWnd:__enumIndex()
-                        oWnd:Show( .T. )
-                     ENDIF
-                     oWnd:LButtonDown( nMRow, nMCol )
-                     EXIT
-                  ENDIF
-               NEXT
-            ENDIF
+                  DispEnd()
+               endif
+            
+            elseif nMRow != WINDOW_HEIGHT + If( ::lMenuBar, 0, 1 )
+            
+               oWnd := ::oCurrentWnd:WindowIsOver( nMRow, nMCol )
+               If oWnd != NIL
+            
+                  If ! oWnd:IsCloseButton( nMRow, nMCol )
+            
+                     If ! oWnd:lFocused
+            
+                        DispBegin()
+                        ::oCurrentWnd := oWnd
+                        ::oCurrentWnd:ToTop():SetFocus( .T. )
+                        DispEnd()
+            
+                     EndIf
+            
+                     If oWnd:IsCaption( nMRow, nMCol )
+                        ::MoveWindow( nMRow, nMCol )
+                     ElseIf nMCol == oWnd:nLeft .Or. nMCol == oWnd:nRight .Or. nMRow == oWnd:nBottom
+                        ::Size( nMRow, nMCol )
+                     EndIf
+            
+                  EndIf
+            
+                  oWnd:LButtonDown( nMRow, nMCol )
+            
+               EndIf
+            
+            endif
             EXIT
-
-         CASE K_RBUTTONDOWN
-            EXIT
-#if 0
-         CASE K_ESC
-            ::RestoreAppStatus()
-            t_oDebugger := NIL
-            s_lExit := .T.
-            DispEnd()
-            ::Exit()
-            EXIT
-#endif
 
          CASE K_ENTER
             IF ! Empty( ::oGetCommand:getValue() )
                ::oWndCommand:KeyPressed( nKey )
                EXIT
             ENDIF
+         CASE K_RBUTTONDOWN
          CASE K_UP
          CASE K_DOWN
          CASE K_LEFT
@@ -1519,7 +1780,9 @@ METHOD PROCEDURE HandleEvent() CLASS HBDebugger
          CASE K_CTRL_HOME
          CASE K_CTRL_END
          CASE K_CTRL_ENTER
-            ::aWindows[ ::nCurrentWindow ]:KeyPressed( nKey )
+            If ::oCurrentWnd:nViewStyle != VS_ICON
+               ::oCurrentWnd:KeyPressed( nKey )
+            EndIf
             EXIT
 
          CASE K_ALT_U /* Move the border between Command and Code windows Up */
@@ -1540,7 +1803,7 @@ METHOD PROCEDURE HandleEvent() CLASS HBDebugger
             EXIT
 
          CASE K_F2
-            ::NotSupported()
+            ::Zoom()
             EXIT
 
          CASE K_F4
@@ -1571,8 +1834,12 @@ METHOD PROCEDURE HandleEvent() CLASS HBDebugger
             ::BreakPointToggle()
             EXIT
 
-         CASE K_F10
+         CASE TRACE_KEY
             ::Trace()
+            EXIT
+
+         CASE K_CTRL_F10
+            ::StepOut()
             EXIT
 
          CASE K_TAB
@@ -1586,6 +1853,7 @@ METHOD PROCEDURE HandleEvent() CLASS HBDebugger
          OTHERWISE
             IF ! ::OpenMenu( __dbgAltToKey( nKey ) )
                ::oWndCommand:KeyPressed( nKey )
+               ::oWndCommand:Refresh()
             ENDIF
          ENDSWITCH
       ENDIF
@@ -1603,97 +1871,83 @@ METHOD PROCEDURE Hide() CLASS HBDebugger
 
 METHOD PROCEDURE HideCallStack() CLASS HBDebugger
 
-   ::lShowCallStack := .F.
+   Local lFocused := ::oWndStack:lFocused
 
-   IF ::oWndStack != NIL
-      DispBegin()
-      ::oWndStack:Hide()
-      IF ::aWindows[ ::nCurrentWindow ] == ::oWndStack
-         ::NextWindow()
-      ENDIF
-      ::RemoveWindow( ::oWndStack )
-      ::oWndStack := NIL
+   ::lShowCallStack = .f.
 
-      ::oWndCode:Resize( ,,, ::oWndCode:nRight + 16 )
-      IF ::oWndVars != NIL
-         ::oWndVars:Resize( ,,, ::oWndVars:nRight + 16 )
-      ENDIF
-      IF ::oWndPnt != NIL
-         ::oWndPnt:Resize( ,,, ::oWndPnt:nRight + 16 )
-      ENDIF
-      DispEnd()
-   ENDIF
+   DispBegin()
+   ::oBrwStack:goTop()
+   ::oWndStack:Hide( .F. )
+
+   If ::lTiled
+      ::Tile()
+   EndIf
+
+   If lFocused
+      ::SetFocusCodeWindow()
+   Else
+      ::oCurrentWnd:SetFocus( .t. )
+   EndIf
+
+   DispEnd()
 
    RETURN
 
 
 METHOD PROCEDURE HideVars() CLASS HBDebugger
 
-   LOCAL nTop
+   Local lFocused := ::oWndVars:lFocused
 
-   IF ::oWndVars == NIL
-      RETURN
-   ENDIF
+   ::oBrwVars:goTop()
+   ::oWndVars:Hide( .F. )
 
-   ::oWndVars:Hide()
-   IF ::oWndPnt == NIL
-      nTop := 1
-   ELSE
-      ::oWndPnt:Resize( 1, , ::oWndPnt:nBottom - ( ::oWndPnt:nTop - 1 ) )
-      ::oBrwPnt:Resize( 2, , ::oWndPnt:nBottom - 1 )
-      nTop := ::oWndPnt:nBottom + 1
-   ENDIF
-   ::oWndCode:Resize( nTop )
-   IF ::oBrwText != NIL
-      ::oBrwText:Resize( ::oWndCode:nTop + 1 )
-   ENDIF
+   If ::lTiled
+      ::Tile()
+   EndIf
 
-   IF ::aWindows[ ::nCurrentWindow ] == ::oWndVars
-      ::NextWindow()
-   ENDIF
+   If lFocused
+      ::SetFocusCodeWindow()
+   Else
+      ::oCurrentWnd:SetFocus( .t. )
+   EndIf
 
    RETURN
+   
+METHOD EditValue( cMsg, uValue, lEditable ) CLASS HBDebugger
 
-
-METHOD InputBox( cMsg, uValue, bValid, lEditable ) CLASS HBDebugger
-
-   LOCAL nTop    := Int( ( ::nMaxRow / 2 ) - 5 )
-   LOCAL nLeft   := Int( ( ::nMaxCol / 2 ) - 25 )
-   LOCAL nBottom := nTop + 2
-   LOCAL nRight  := nLeft + 50
-   LOCAL cType   := ValType( uValue )
-   LOCAL nWidth  := nRight - nLeft - 1
-   LOCAL uTemp
+   LOCAL nTop      := Int( ( ::nMaxRow / 2 ) - 5 )
+   LOCAL nLeft     := Int( ( ::nMaxCol / 2 ) - 25 )
+   LOCAL nBottom   := nTop + 2
+   LOCAL nRight    := nLeft + 50
+   LOCAL cType     := ValType( uValue )
+   LOCAL nWidth    := nRight - nLeft - 1
+   LOCAL cValExpr
    LOCAL lExit
-   LOCAL oWndInput := HBDbWindow():New( nTop, nLeft, nBottom, nRight, cMsg, ;
-      ::oPullDown:cClrPopup )
+   LOCAL nOldCursor
+   LOCAL oWndInput := HBDbWindow():New( nTop, nLeft, nBottom, nRight, cMsg, ::oPullDown:cClrPopup )
 
-   oWndInput:lShadow := .T.
+   oWndInput:lShadow      := .T.
+   oWndInput:lCloseButton := .F.
    oWndInput:Show()
 
-   uTemp := uValue
+   cValExpr := uValue
 
-   IF hb_defaultValue( lEditable, .T. )
+   IF hb_defaultValue( lEditable, .T. ) .And. ! cType $ "AOBH"
 
-      IF ! cType == "C" .OR. Len( uValue ) < nWidth
-         uTemp := PadR( iif( cType == "N", hb_ntos( uValue ), ;
-                                           uValue ), nWidth )
-      ENDIF
-      IF bValid == NIL .AND. cType $ "N"
-         bValid := __dbgExprValidBlock( cType )
-      ENDIF
-      __dbgInput( nTop + 1, nLeft + 1, nWidth, @uTemp, bValid, ;
-                  __dbgColors()[ 5 ], Max( Max( nWidth, Len( uTemp ) ), 256 ) )
-      SWITCH cType
-      CASE "C" ; uTemp := AllTrim( uTemp ) ; EXIT
-      CASE "N" ; uTemp := Val( uTemp )     ; EXIT
-      ENDSWITCH
+      cValExpr := __dbgValToExp( uValue )
+      cValExpr := PadR( cValExpr, Max( Len( cValExpr ) * 2, 255 ) )
+      IF __dbgInput( nTop + 1, nLeft + 1, nWidth, @cValExpr, __dbgExprValidBlock(), __dbgColors()[ 5 ], Max( Max( nWidth, Len( cValExpr ) ), GET_BUFFER_SIZE ) )
+         cValExpr := AllTrim( cValExpr )
+      ELSE
+         cValExpr := uValue
+      ENDIF      
 
    ELSE
 
-      hb_DispOutAt( nTop + 1, nLeft + 1, left( __dbgValToStr( uValue ), nRight - nLeft - 1 ), ;
-                    __dbgColors()[ 2 ] + "," + __dbgColors()[ 5 ] )
+      oWndInput:bPainted := { || hb_DispOutAt( oWndInput:nTop + 1, oWndInput:nLeft + 1, PadR( __dbgValToStr( uValue ), oWndInput:nRight - oWndInput:nLeft - 1 ), ::ClrModal() ) }
+      hb_DispOutAt( nTop + 1, nLeft + 1, left( __dbgValToStr( uValue ), nRight - nLeft - 1 ), ::ClrModal() )
       SetPos( nTop + 1, nLeft + 1 )
+      nOldCursor := SetCursor( SC_NONE )
 
       lExit := .F.
 
@@ -1726,15 +1980,103 @@ METHOD InputBox( cMsg, uValue, bValid, lEditable ) CLASS HBDebugger
                LOOP
             ENDSWITCH
 
-         OTHERWISE
-            __dbgAlert( "Value cannot be edited" )
-
          ENDSWITCH
       ENDDO
+      
+      SetCursor( nOldCursor )
+
    ENDIF
 
    oWndInput:Hide()
 
+   RETURN cValExpr
+
+
+METHOD InputBox( cMsg, uValue, bValid, lEditable ) CLASS HBDebugger
+
+   Local nCursor
+   Local nTop    := Int( ( ::nMaxRow / 2 ) - 5 )
+   Local nLeft   := Int( ( ::nMaxCol / 2 ) - 25 )
+   Local nBottom := nTop + 2
+   Local nRight  := nLeft + 50
+   Local cType   := ValType( uValue )
+   Local nWidth  := nRight - nLeft - 1
+   Local uTemp
+   Local lExit
+   Local oWndInput := HBDbWindow():New( nTop, nLeft, nBottom, nRight, cMsg, ::oPullDown:cClrPopup )
+
+   oWndInput:lShadow      := .T.
+   oWndInput:lCloseButton := .F.
+   oWndInput:Show()
+
+   uTemp := uValue
+
+   IF hb_defaultValue( lEditable, .T. )
+
+      IF ! cType == "C" .OR. Len( uValue ) < nWidth
+         uTemp := PadR( iif( cType == "N", hb_ntos( uValue ), uValue ), nWidth )
+      ENDIF
+      IF bValid == NIL .AND. cType $ "N"
+         bValid := __dbgExprValidBlock( cType )
+      ENDIF
+      __dbgInput( nTop + 1, nLeft + 1, nWidth, @uTemp, bValid, __dbgColors()[ 5 ], Max( Max( nWidth, Len( uTemp ) ), 256 ) )
+      SWITCH cType
+         CASE "C" ; uTemp := AllTrim( uTemp ) ; EXIT
+         CASE "N" ; uTemp := Val( uTemp )     ; EXIT
+      ENDSWITCH
+
+   ELSE
+
+      nCursor := SetCursor( SC_NONE ) 
+      
+      oWndInput:bPainted := { || hb_DispOutAt( oWndInput:nTop + 1, oWndInput:nLeft + 1,;
+                                               PadR( __dbgValToStr( uValue ), oWndInput:nRight - oWndInput:nLeft - 1 ),;
+                                               __dbgColors()[ 2 ] + "," + __dbgColors()[ 5 ] ) }
+      hb_DispOutAt( nTop + 1, nLeft + 1,;
+                    PadR( __dbgValToStr( uValue ), nRight - nLeft - 1 ),;
+                    __dbgColors()[ 2 ] + "," + __dbgColors()[ 5 ] )
+      SetPos( nTop + 1, nLeft + 1 )
+
+      lExit := .F.
+
+      DO WHILE ! lExit
+
+         SWITCH __dbgInkey()
+         CASE K_ESC
+            lExit := .T.
+            EXIT
+
+         CASE K_ENTER
+            SWITCH cType
+               CASE "A"
+                  IF Len( uValue ) == 0
+                     __dbgAlert( "Array is empty" )
+                  ELSE
+                     __dbgArrays( uValue, cMsg, .F. )
+                  ENDIF
+                  LOOP
+               CASE "H"
+                  IF Len( uValue ) == 0
+                     __dbgAlert( "Hash is empty" )
+                  ELSE
+                     __dbgHashes( uValue, cMsg, .F. )
+                  ENDIF
+                  LOOP
+               CASE "O"
+                  __dbgObject( uValue, cMsg, .F. )
+                  LOOP
+            ENDSWITCH
+         
+            EXIT
+         ENDSWITCH
+      ENDDO
+
+      SetCursor( nCursor )
+
+   ENDIF
+
+   oWndInput:Hide()
+   
    RETURN uTemp
 
 
@@ -1761,10 +2103,8 @@ METHOD LineNumbers( lLineNumbers ) CLASS HBDebugger
 
    ::lLineNumbers := hb_defaultValue( lLineNumbers, ! ::lLineNumbers )
    ::oPulldown:GetItemByIdent( "LINE" ):checked := ::lLineNumbers
-   IF ::oBrwText != NIL
-      ::oBrwText:lLineNumbers := ::lLineNumbers
-      ::oBrwText:RefreshAll()
-   ENDIF
+   ::oBrwText:lLineNumbers := ::lLineNumbers
+   ::oBrwText:RefreshAll()
 
    RETURN Self
 
@@ -1790,8 +2130,7 @@ METHOD ListBox( cCaption, aItems ) CLASS HBDebugger
    nBottom := Int( ( ::nMaxRow / 2 ) + Min( nItems, ::nMaxRow - 5 ) / 2 + 1 )
    nLeft   := Int( ( ::nMaxCol / 2 ) - Min( nMaxWid, ::nMaxCol * 3 / 2 ) / 2 )
    nRight  := Int( ( ::nMaxCol / 2 ) + Min( nMaxWid, ::nMaxCol * 3 / 2 ) / 2 )
-   oWndList := HBDbWindow():new( nTop, nLeft, nBottom, nRight, cCaption, ;
-      ::oPullDown:cClrPopup )
+   oWndList := HBDbWindow():new( nTop, nLeft, nBottom, nRight, cCaption, ::oPullDown:cClrPopup )
    oWndList:lShadow := .T.
    oWndList:Show()
 
@@ -1806,45 +2145,64 @@ METHOD ListBox( cCaption, aItems ) CLASS HBDebugger
 METHOD PROCEDURE LoadCallStack() CLASS HBDebugger
 
    LOCAL i
-   LOCAL nDebugLevel
-   LOCAL nCurrLevel
+   LOCAL nDebugStackLen
    LOCAL nLevel
+   LOCAL nStackLevel
    LOCAL nPos
 
    ::aProcStack := Array( ::nProcLevel )
+   nDebugStackLen := __dbgProcLevel() - ::nProcLevel
 
-   nCurrLevel := __dbgProcLevel() - 1
-   nDebugLevel := nCurrLevel - ::nProcLevel + 1
-
-   FOR i := nDebugLevel TO nCurrLevel
-      nLevel := nCurrLevel - i + 1
+   FOR i := 1 TO ::nProcLevel
+      nLevel := ::nProcLevel - i + 1
+      nStackLevel := i + nDebugStackLen - 1
       IF ( nPos := AScan( ::aCallStack, {| a | a[ HB_DBG_CS_LEVEL ] == nLevel } ) ) > 0
          // a procedure with debug info
-         ::aProcStack[ i - nDebugLevel + 1 ] := ::aCallStack[ nPos ]
+         ::aProcStack[ i ] := { ::aCallStack[ nPos, HB_DBG_CS_MODULE    ],;
+                                ::aCallStack[ nPos, HB_DBG_CS_FUNCTION  ],;
+                                ::aCallStack[ nPos, HB_DBG_CS_LINE      ],;
+                                ::aCallStack[ nPos, HB_DBG_CS_LEVEL     ],;
+                                ::aCallStack[ nPos, HB_DBG_CS_LOCALS    ],;
+                                ::aCallStack[ nPos, HB_DBG_CS_STATICS   ],;
+                                ::aCallStack[ nPos, HB_DBG_CS_CODEBLOCK ],;
+                                Len( ::aCallStack ) - ( nPos - 1 ) }
+      ELSEIF ! Empty( __dbgProcFile( nStackLevel ) )
+         ::aProcStack[ i ] := { __dbgProcFile( nStackLevel ),;
+                                __dbgProcName( nStackLevel ),;
+                                __dbgProcLine( nStackLevel ),;
+                                nLevel,; 
+                                {},; 
+                                {},;
+                                Left( __dbgProcName( nStackLevel ), 3 ) == "(b)",;
+                                0 }
       ELSE
-         ::aProcStack[ i - nDebugLevel + 1 ] := iif( ProcLine( i ) != 0, ;
-            { ProcFile( i ), ProcName( i ), ProcLine( i ), nLevel, {}, {} }, ;
-            {, ProcName( i ) + "(" + hb_ntos( ProcLine( i ) ) + ")", , nLevel, , } )
+         ::aProcStack[ i ] := { Nil,;
+                                __dbgProcName( nStackLevel ) + "(" + hb_ntos( __dbgProcLine( nStackLevel ) ) + ")",; 
+                                Nil,; 
+                                nLevel,; 
+                                Nil,; 
+                                Nil,; 
+                                Left( __dbgProcName( nStackLevel ), 3 ) == "(b)",;
+                                0 }
       ENDIF
    NEXT
 
    RETURN
 
-
 METHOD PROCEDURE LoadColors() CLASS HBDebugger
 
    LOCAL oWnd
 
-   ::oPullDown:LoadColors()
-   IF ::lActive
-      ::oPullDown:Refresh()
-      ::BarDisplay()
+   IF ! ::lDebuggerWindowIsOpen
+      RETURN
    ENDIF
+   
+   ::oPullDown:LoadColors()
+   ::oPullDown:Refresh()
+   ::BarDisplay()
    FOR EACH oWnd IN ::aWindows
       oWnd:LoadColors()
-      IF ::lActive
-         oWnd:Refresh()
-      ENDIF
+      oWnd:Refresh()
    NEXT
 
    RETURN
@@ -1896,9 +2254,9 @@ METHOD PROCEDURE LoadVars() CLASS HBDebugger  // updates monitored variables
       ENDIF
    ENDIF
 
-   IF ::aProcStack[ ::oBrwStack:Cargo ][ HB_DBG_CS_LINE ] != NIL
+   IF ::aProcStack[ ::oBrwStack:Cargo, HB_DBG_CS_LINE ] != NIL
       IF ::lShowGlobals
-         cName := ::aProcStack[ ::oBrwStack:Cargo ][ HB_DBG_CS_MODULE ]
+         cName := ::aProcStack[ ::oBrwStack:Cargo, HB_DBG_CS_MODULE ]
          FOR EACH n IN ::aModules
             IF ! ::lShowAllGlobals
                IF ! ::ModuleMatch( n[ HB_DBG_MOD_NAME ], cName )
@@ -1917,19 +2275,19 @@ METHOD PROCEDURE LoadVars() CLASS HBDebugger  // updates monitored variables
       ENDIF
 
       IF ::lShowStatics
-         cName := ::aProcStack[ ::oBrwStack:Cargo ][ HB_DBG_CS_MODULE ]
+         cName := ::aProcStack[ ::oBrwStack:Cargo, HB_DBG_CS_MODULE ]
          IF ( n := AScan( ::aModules, {| a | ::ModuleMatch( a[ HB_DBG_MOD_NAME ], cName ) } ) ) > 0
-            FOR EACH m IN ::aModules[ n ][ HB_DBG_MOD_STATICS ]
+            FOR EACH m IN ::aModules[ n, HB_DBG_MOD_STATICS ]
                AAdd( aBVars, m )
             NEXT
          ENDIF
-         FOR EACH n IN ::aProcStack[ ::oBrwStack:Cargo ][ HB_DBG_CS_STATICS ]
+         FOR EACH n IN ::aProcStack[ ::oBrwStack:Cargo, HB_DBG_CS_STATICS ]
             AAdd( aBVars, n )
          NEXT
       ENDIF
 
       IF ::lShowLocals
-         FOR EACH n IN ::aProcStack[ ::oBrwStack:Cargo ][ HB_DBG_CS_LOCALS ]
+         FOR EACH n IN ::aProcStack[ ::oBrwStack:Cargo, HB_DBG_CS_LOCALS ]
             cName := n[ HB_DBG_VAR_NAME ]
             // Is there another var with this name ?
             IF ( m := AScan( aBVars, {| aVar | aVar[ HB_DBG_VAR_NAME ] == cName .AND. aVar[ HB_DBG_VAR_TYPE ] == "S" } ) ) > 0
@@ -1941,7 +2299,7 @@ METHOD PROCEDURE LoadVars() CLASS HBDebugger  // updates monitored variables
       ENDIF
    ENDIF
 
-   IF ::oBrwVars != NIL .AND. ::oBrwVars:cargo[ 1 ] > Len( aBVars )
+   IF ::oBrwVars:cargo > Len( aBVars )
       ::oBrwVars:GoTop()
    ENDIF
    ::aVars := aBVars
@@ -1978,13 +2336,22 @@ METHOD Locate( nMode, cValue ) CLASS HBDebugger
    RETURN lFound
 
 
-METHOD LocatePrgPath( cPrgName ) CLASS HBDebugger
+METHOD LocatePrgPath( cPrgName, aDirs ) CLASS HBDebugger
 
    LOCAL cRetPrgName
    LOCAL cDir
+   LOCAL cPath
+   LOCAL cName
+   LOCAL cExt
 
-   FOR EACH cDir IN ::aPathDirs
-      cRetPrgName := cDir + hb_ps() + cPrgName
+   IF hb_FileExists( cPrgName )
+      RETURN cPrgName
+   ENDIF
+
+   HB_FNameSplit( cPrgName, @cPath, @cName, @cExt )
+
+   FOR EACH cDir IN aDirs
+      cRetPrgName := cDir + hb_ps() + cName + cExt
       IF hb_FileExists( cRetPrgName )
          RETURN cRetPrgName
       ENDIF
@@ -2004,34 +2371,103 @@ METHOD PROCEDURE MonoDisplay() CLASS HBDebugger
 
 METHOD NextRoutine() CLASS HBDebugger
 
-   ::RestoreAppScreen()
-   ::RestoreAppState()
    __dbgSetNextRoutine( ::pInfo )
    ::Exit()
 
    RETURN Self
 
+METHOD StepOut() CLASS HBDebugger
+
+   __dbgSetStepOut( ::pInfo )
+   ::Exit()
+
+   RETURN Self
+
+METHOD Tile() CLASS HBDebugger
+
+   Local nTop
+   Local nLeft
+   Local nBottom
+   Local nRight
+
+   DispBegin()
+
+   // Command
+   ::oWndCommand:Resize( WINDOW_HEIGHT - If( ::lMenuBar, 5, 4 ), 0, WINDOW_HEIGHT - If( ::lMenuBar, 1, 0 ), WINDOW_WIDTH )
+
+   // Stack
+   ::oWndStack:Resize( If( ::lMenuBar, 1, 0 ), WINDOW_WIDTH - 15, WINDOW_HEIGHT - If( ::lMenuBar, 6, 5 ), WINDOW_WIDTH )
+
+   nLeft := 0
+   If ::oWndStack:lVisible
+      nRight := ::oWndStack:nLeft - 1
+   Else
+      nRight := WINDOW_WIDTH
+   EndIf
+
+   // WatchPoint
+   nTop  := If( ::lMenuBar, 1, 0 )
+   nBottom := nTop + Min( Len( ::aWatch ) + 1, 4 )
+   ::oWndPnt:Resize( nTop, nLeft, nBottom, nRight )
+
+   // Vars
+   if ::oWndPnt:lVisible
+      nTop := ::oWndPnt:nBottom + 1
+   else
+      nTop := If( ::lMenuBar, 1, 0 )
+   endif
+   nBottom := nTop + Min( Len( ::aVars ) + 1, 5 )
+   ::oWndVars:Resize( nTop, nLeft, nBottom, nRight )
+
+   // Code
+   If ::oWndVars:lVisible
+      nTop := ::oWndVars:nBottom + 1
+   ElseIf ::oWndPnt:lVisible
+      nTop := ::oWndPnt:nBottom + 1
+   Else
+      nTop := If( ::lMenuBar, 1, 0 )
+   EndIf
+   nBottom := ::oWndCommand:nTop - 1
+   ::oWndCode:Resize( nTop, nLeft, nBottom, nRight )
+
+   ::oWndCode:RefreshAll()
+   DispEnd()
+
+   ::lTiled := .T.
+
+   RETURN nil
+
+METHOD MoveWindow( nMRow, nMCol ) CLASS HBDebugger
+
+   ::lTiled :=  ! ::oCurrentWnd:Move( nMRow, nMCol ) .And. ::lTiled
+
+   RETURN NIL
 
 METHOD PROCEDURE NextWindow() CLASS HBDebugger
 
-   LOCAL oWnd
 
-   IF Len( ::aWindows ) > 0
+   Local nPos
+   Local nCurr
 
-      oWnd := ::aWindows[ ::nCurrentWindow++ ]
-      oWnd:Show( .F. )
-      IF ::nCurrentWindow > Len( ::aWindows )
-         ::nCurrentWindow := 1
-      ENDIF
-      DO WHILE ! ::aWindows[ ::nCurrentWindow ]:lVisible
-         ::nCurrentWindow++
-         IF ::nCurrentWindow > Len( ::aWindows )
-            ::nCurrentWindow := 1
-         ENDIF
-      ENDDO
-      oWnd := ::aWindows[ ::nCurrentWindow ]
-      oWnd:Show( .T. )
-   ENDIF
+   DispBegin()
+   nCurr := AScan( ::aWindows, { | oWnd | oWnd == ::oCurrentWnd } )
+   If nCurr > 0
+      nPos := nCurr + 1
+      If nPos > Len( ::aWindows )
+         nPos := 1
+      EndIf
+      While ! ::aWindows[ nPos ]:lVisible .And. nPos != nCurr
+         If nPos > Len( ::aWindows )
+            nPos := 1
+         EndIf
+         nPos++
+      EndDo
+      ::oCurrentWnd := ::aWindows[ nPos ]
+   Else
+      ::oCurrentWnd := ::oCurrentWnd:NextWindow()
+   EndIf
+   ::oCurrentWnd:ToTop():SetFocus( .T. )
+   DispEnd()
 
    RETURN
 
@@ -2059,28 +2495,25 @@ METHOD PROCEDURE Open( cFileName ) CLASS HBDebugger
       ENDSWITCH
    ENDIF
 
-   IF ! Empty( cFileName ) .AND. ;
-      ( ! HB_ISSTRING( ::cPrgName ) .OR. ! hb_FileMatch( cFileName, ::cPrgName ) )
+   IF ! Empty( cFileName ) .AND.  ( ! Empty( ::cPrgName ) .OR. ! hb_FileMatch( cFileName, ::cPrgName ) )
 
-      IF ! hb_FileExists( cFileName ) .AND. ! Empty( ::cPathForFiles )
-         cRealName := ::LocatePrgPath( cFileName )
-         IF Empty( cRealName )
-            __dbgAlert( "File '" + cFileName + "' not found!" )
-            RETURN
-         ENDIF
-         cFileName := cRealName
+      cRealName := ::LocatePrgPath( cFileName, ::aPathDirs )
+      IF Empty( cRealName )
+         __dbgAlert( "File '" + cFileName + "' not found!" )
+         RETURN
       ENDIF
-      ::cPrgName := cFileName
-      ::lPPO := ( Lower( hb_FNameExt( cFileName ) ) == ".ppo" )
+      DispBegin()
+      ::cPrgName := cRealName
+      ::lPPO := ( Lower( hb_FNameExt( cRealName ) ) == ".ppo" )
       ::oPulldown:GetItemByIdent( "PPO" ):Checked := ::lPPO
-      ::oBrwText := HBBrwText():New( ::oWndCode:nTop + 1, ::oWndCode:nLeft + 1, ;
-         ::oWndCode:nBottom - 1, ::oWndCode:nRight - 1, cFileName, ;
-         __dbgColors()[ 2 ] + "," + __dbgColors()[ 5 ] + "," + ;
-         __dbgColors()[ 3 ] + "," + __dbgColors()[ 6 ], ;
-         ::lLineNumbers, ::nTabWidth )
-      ::oWndCode:Browser := ::oBrwText
+      ::oBrwText:LoadFile( cRealName, ::nTabWidth )
+      ::oBrwText:cPrgName := cRealName
+      ::oBrwText:RefreshAll()
+      ::RedisplayBreakpoints()               // check for breakpoints in this file and display them
       ::oWndCode:SetCaption( ::cPrgName )
       ::oWndCode:Refresh()       // to force the window caption to update
+      DispEnd()
+      
    ENDIF
 
    RETURN
@@ -2088,14 +2521,19 @@ METHOD PROCEDURE Open( cFileName ) CLASS HBDebugger
 METHOD OpenMenu( cName ) CLASS HBDebugger
 
    LOCAL nPopup := ::oPullDown:GetHotKeyPos( Left( cName, 1 ) )
-
    IF nPopup == 0
       RETURN .F.
    ENDIF
    IF ::oPullDown:nOpenPopup != nPopup
+      IF ::oCurrentWnd:lFocused .And. HB_ISEVALITEM( ::oCurrentWnd:bLostFocus )
+         Eval( ::oCurrentWnd:bLostFocus )
+      ENDIF
+      If ! ::lMenuBar
+         ::ShowMenuBar()
+      EndIf
       ::oPullDown:ShowPopup( nPopup )
    ENDIF
-
+   
    RETURN .T.
 
 METHOD OpenPPO() CLASS HBDebugger
@@ -2181,39 +2619,117 @@ METHOD PROCEDURE Quit() CLASS HBDebugger
 
 METHOD PathForFiles( cPathForFiles ) CLASS HBDebugger
 
-   IF cPathForFiles == NIL
+   IF ! HB_IsString( cPathForFiles )
       cPathForFiles := ::InputBox( "Search path for source files:", ::cPathForFiles )
+      If LastKey() == K_ESC .Or. ! HB_IsString( cPathForFiles )
+         Return Self
+      EndIf
    ENDIF
-   ::cPathForFiles := cPathForFiles
-   ::aPathDirs := PathToArray( ::cPathForFiles )
 
+   cPathForFiles := AllTrim( cPathForFiles )
+   If ! Empty( cPathForFiles )
+      ::aPathDirs := PathsWithSubDirs( cPathForFiles )
+      ::cPathForFiles := ""
+      AEval( ::aPathDirs, { | cPath | ::cPathForFiles += hb_OSPathListSeparator() + cPath } )
+      ::cPathForFiles := SubStr( ::cPathForFiles, 2 )
+   Else
+      ::cPathForFiles := ""
+      ::aPathDirs := {}
+   EndIf
+
+   // Force reload
+   ::cPrgName := ""
    ::Resume()
 
    RETURN Self
 
 
-METHOD PROCEDURE PrevWindow() CLASS HBDebugger
+METHOD PrevWindow() CLASS HBDebugger
 
-   LOCAL oWnd
+   Local nPos
+   Local nCurr
 
-   IF Len( ::aWindows ) > 0
+   DispBegin()
+   nCurr := AScan( ::aWindows, { | oWnd | oWnd == ::oCurrentWnd } )
+   If nCurr > 0
+      nPos := nCurr - 1
+      If nPos < 1
+         nPos := Len( ::aWindows )
+      EndIf
+      While ! ::aWindows[ nPos ]:lVisible .And. nPos != nCurr
+         If nPos < 1
+            nPos := Len( ::aWindows )
+         EndIf
+         nPos--
+      EndDo
+      ::oCurrentWnd := ::aWindows[ nPos ]
+   Else
+      ::oCurrentWnd := ::oCurrentWnd:PrevWindow()
+   EndIf
+   ::oCurrentWnd:ToTop():SetFocus( .T. )
+   DispEnd()
 
-      oWnd := ::aWindows[ ::nCurrentWindow-- ]
-      oWnd:Show( .F. )
-      IF ::nCurrentWindow < 1
-         ::nCurrentWindow := Len( ::aWindows )
-      ENDIF
-      DO WHILE ! ::aWindows[ ::nCurrentWindow ]:lVisible
-         ::nCurrentWindow--
-         IF ::nCurrentWindow < 1
-            ::nCurrentWindow := Len( ::aWindows )
-         ENDIF
-      ENDDO
-      oWnd := ::aWindows[ ::nCurrentWindow ]
-      oWnd:Show( .T. )
-   ENDIF
+   RETURN Self 
 
-   RETURN
+METHOD Iconize() CLASS HBDebugger
+
+   DispBegin()
+   ::oCurrentWnd:Iconize():RefreshAll()
+   ::lTiled := .F.
+   DispEnd()
+
+   RETURN Self
+
+
+
+METHOD Zoom() CLASS HBDebugger
+
+   DispBegin()
+   ::oCurrentWnd:Zoom( If( ::lMenuBar, 1, 0 ), 0, WINDOW_HEIGHT - If( ::lMenuBar, 1, 0 ), WINDOW_WIDTH ):RefreshAll()
+   ::lTiled := .F.
+   DispEnd()
+
+   RETURN Self 
+
+
+METHOD MenuBar() CLASS HBDebugger
+
+   DispBegin()
+
+   ::lMenuBar := ! ::lMenuBar
+   ::oPulldown:GetItemByIdent( "MENU" ):checked := ::lMenuBar
+
+   __dbgRestScreen( 0, 0, WINDOW_HEIGHT, WINDOW_WIDTH, ::cAppScreen )
+   if ::lMenuBar
+      ::oPullDown:Display()
+      ::BarDisplay()
+   endif
+   HBDbWindow():SaveBackImage( If( ::lMenuBar, 1, 0 ), 0, WINDOW_HEIGHT - If( ::lMenuBar, 1, 0 ), WINDOW_WIDTH )
+
+   If ::lTiled
+      ::Tile()
+   Else
+      ::oCurrentWnd:RefreshAll()
+   EndIf
+
+   DispEnd()
+
+   RETURN Self
+
+
+METHOD ShowMenuBar() CLASS HBDebugger
+
+   ::oPullDown:Refresh()
+   ::BarDisplay()
+
+   RETURN Self 
+
+
+METHOD Size( nMRow, nMCol ) CLASS HBDebugger
+
+   ::lTiled :=  ! ::oCurrentWnd:ChangeSize( nMRow, nMCol ) .And. ::lTiled
+
+   RETURN Self
 
 
 METHOD PROCEDURE Private() CLASS HBDebugger
@@ -2242,92 +2758,12 @@ METHOD PROCEDURE RefreshVars() CLASS HBDebugger
    ::oPulldown:GetItemByIdent( "ALL" ):checked := ::lAll
    ::oPulldown:GetItemByIdent( "SHOWALLGLOBALS" ):checked := ::lShowAllGlobals
 
-   IF ::lActive
-      IF ::lShowGlobals .OR. ::lShowPublics .OR. ::lShowPrivates .OR. ::lShowStatics .OR. ::lShowLocals
-         ::LoadVars()
-         ::ShowVars()
-      ELSE
-         ::HideVars()
-      ENDIF
-   ENDIF
-
-   RETURN
-
-
-METHOD PROCEDURE RemoveWindow( oWnd ) CLASS HBDebugger
-
-   LOCAL n
-
-   IF ( n := hb_AScan( ::aWindows, oWnd,,, .T. ) ) > 0
-      ::aWindows := hb_ADel( ::aWindows, n, .T. )
-   ENDIF
-
-   ::nCurrentWindow := 1
-
-   RETURN
-
-
-METHOD ResizeWindows( oWindow ) CLASS HBDebugger
-
-   LOCAL oWindow2
-   LOCAL nTop
-   LOCAL lVisible2 := .F.
-
-   DO CASE
-   CASE oWindow == ::oWndVars
-      oWindow2 := ::oWndPnt
-   CASE oWindow == ::oWndPnt
-      oWindow2 := ::oWndVars
-   ENDCASE
-
-   DispBegin()
-   IF oWindow2 == NIL
-      nTop := oWindow:nBottom + 1
+   IF ::lShowGlobals .OR. ::lShowPublics .OR. ::lShowPrivates .OR. ::lShowStatics .OR. ::lShowLocals
+      ::LoadVars()
+      ::ShowVars()
    ELSE
-      lVisible2 := oWindow2:lVisible
-      IF oWindow2:lVisible
-         IF oWindow:nTop < oWindow2:nTop
-            nTop := oWindow2:nBottom - oWindow2:nTop + 1
-            oWindow2:Resize( oWindow:nBottom + 1,, oWindow:nBottom + nTop )
-         ELSE
-            nTop := oWindow:nBottom - oWindow:nTop + 1
-            oWindow:Resize( oWindow2:nBottom + 1,, oWindow2:nBottom + nTop )
-         ENDIF
-         nTop := Max( oWindow:nBottom, oWindow2:nBottom ) + 1
-      ELSE
-         IF oWindow:nTop > 1
-            nTop := oWindow:nBottom - oWindow:nTop + 1
-            oWindow:Resize( 1,, nTop )
-         ENDIF
-         nTop := oWindow:nBottom + 1
-      ENDIF
+      ::HideVars()
    ENDIF
-
-   oWindow:hide()
-   IF oWindow2 != NIL
-      oWindow2:hide()
-   ENDIF
-
-   ::oWndCode:Resize( nTop )
-
-   IF oWindow2 != NIL .AND. lVisible2
-      oWindow2:Show()
-   ENDIF
-   oWindow:Show()
-   DispEnd()
-
-   RETURN Self
-
-
-METHOD PROCEDURE RestoreAppScreen() CLASS HBDebugger
-
-   LOCAL i
-
-   ::CloseDebuggerWindow()
-
-   FOR i := 1 TO ::nAppDispCount
-      DispBegin()
-   NEXT
 
    RETURN
 
@@ -2338,6 +2774,11 @@ METHOD PROCEDURE RestoreAppState() CLASS HBDebugger
    Set( _SET_FILECASE, ::nAppFileCase )
    Set( _SET_TYPEAHEAD, ::nAppTypeAhead )
    hb_keySetLast( ::nAppLastKey )
+   hb_gtInfo( HB_GTI_INKEYFILTER, ::bAppInkeyAfter )
+   hb_gtInfo( HB_GTI_INKEYREAD, ::bAppInkeyBefore )
+   __Keyboard( ::cKeyboardBuffer )
+   SetPos( ::nAppRow, ::nAppCol )
+   SetColor( ::cAppColors )
 
    RETURN
 
@@ -2353,64 +2794,34 @@ METHOD PROCEDURE RestoreSettings( cFileName ) CLASS HBDebugger
       ::cSettingsFileName := cFileName
    ENDIF
 
+   // Default extension...
+   If At( ".", ::cSettingsFileName ) == 0
+      ::cSettingsFileName := AllTrim( ::cSettingsFileName ) + ".cld"
+   EndIf
+
    ::LoadSettings()
    ::ShowVars()
 
    RETURN
 
 
-METHOD PROCEDURE SaveAppScreen() CLASS HBDebugger
-
-   LOCAL nRight
-   LOCAL nTop
-   LOCAL i
-
-   ::nAppDispCount := DispCount()
-   FOR i := 1 TO ::nAppDispCount
-      DispEnd()
-   NEXT
-
-   ::OpenDebuggerWindow()
-
-   IF ::nMaxRow != MaxRow() .OR. ::nMaxCol != MaxCol()
-      DispBegin()
-      ::nMaxRow := MaxRow()
-      ::nMaxCol := MaxCol()
-      nTop := 1
-      nRight := ::nMaxCol
-      ::oWndCommand:Resize( ::nMaxRow - ::nCmdWndHight - 2, 0, ::nMaxRow - 1, ::nMaxCol )
-      ::oGetCommand:newPos( ::oWndCommand:nBottom - 1, ::oWndCommand:nLeft + 3 )
-      ::oBrwStack:nTop := 2
-      ::oBrwStack:nLeft := ::nMaxCol - 14
-      ::oBrwStack:nRight := ::nMaxCol - 1
-      ::oBrwStack:nBottom := ::nMaxRow - ::nCmdWndHight - 4
-      IF ::oWndStack != NIL
-         nRight -= 16
-         ::oWndStack:Resize( , nRight + 1, ::nMaxRow - ::nCmdWndHight - 3, ::nMaxCol )
-      ENDIF
-      IF ::oWndVars != NIL
-         ::oWndVars:Resize( , , , nRight )
-         nTop := Max( nTop, ::oWndVars:nBottom + 1 )
-      ENDIF
-      IF ::oWndPnt != NIL
-         ::oWndPnt:Resize( , , , nRight )
-         nTop := Max( nTop, ::oWndPnt:nBottom + 1 )
-      ENDIF
-      ::oWndCode:Resize( nTop, 0, ::nMaxRow - ::nCmdWndHight - 3, nRight )
-      ::oPullDown:Refresh()
-      ::BarDisplay()
-      DispEnd()
-   ENDIF
-
-   RETURN
-
-
 METHOD PROCEDURE SaveAppState() CLASS HBDebugger
+   
+   LOCAL nKey
 
-   ::nAppDirCase := Set( _SET_DIRCASE, HB_SET_CASE_MIXED )
-   ::nAppFileCase := Set( _SET_FILECASE, HB_SET_CASE_MIXED )
-   ::nAppTypeAhead := Set( _SET_TYPEAHEAD, 16 )
-   ::nAppLastKey := LastKey()
+   ::nAppDirCase     := Set( _SET_DIRCASE, 0 )
+   ::nAppFileCase    := Set( _SET_FILECASE, 0 )
+   ::nAppTypeAhead   := Set( _SET_TYPEAHEAD, 16 )
+   ::nAppLastKey     := LastKey()
+   ::bAppInkeyAfter  := hb_gtInfo( HB_GTI_INKEYFILTER, NIL )
+   ::bAppInkeyBefore := hb_gtInfo( HB_GTI_INKEYREAD, NIL )
+   ::nAppRow         := Row()
+   ::nAppCol         := Col()
+   ::cKeyboardBuffer := ""
+   ::cAppColors      := SetColor()
+   while( ( nKey := Inkey() ) != 0 )
+      ::cKeyboardBuffer += Chr( nKey )
+   EndDo
 
    RETURN
 
@@ -2431,6 +2842,11 @@ METHOD PROCEDURE SaveSettings( cFileName ) CLASS HBDebugger
       ::cSettingsFileName := cFileName
    ENDIF
 
+   // Default extension...
+   If At( ".", ::cSettingsFileName ) == 0
+      ::cSettingsFileName := AllTrim( ::cSettingsFileName ) + ".cld"
+   EndIf
+   
    IF ! Empty( ::cPathForFiles )
       cInfo += "Options Path " + ::cPathForFiles + hb_eol()
    ENDIF
@@ -2525,41 +2941,44 @@ METHOD ResizeCmdWnd( nLines ) CLASS HBDebugger
    LOCAL aShow
    LOCAL oWnd
 
+   IF ! ::lTiled
+      RETURN Self
+   ENDIF
+   
    nTop := 1
    nRight := ::nMaxCol
-   IF ::oWndVars != NIL
+   IF ::oWndVars:lVisible
       nTop := Max( nTop, ::oWndVars:nBottom + 1 )
    ENDIF
-   IF ::oWndPnt != NIL
+   IF ::oWndPnt:lVisible
       nTop := Max( nTop, ::oWndPnt:nBottom + 1 )
    ENDIF
-   IF ::oWndStack != NIL
+   IF ::oWndStack:lVisible
       nRight -= 16
    ENDIF
 
-   IF ::nCmdWndHight + nLines >= 2 .AND. ;
-      ::nMaxRow - ( ::nCmdWndHight + nLines + 4 ) > nTop
+   IF ::nCmdWndHight + nLines >= 2 .AND. ::nMaxRow - ( ::nCmdWndHight + nLines + 4 ) > nTop
 
       DispBegin()
       aShow := {}
       IF ::oWndCode:lVisible
-         ::oWndCode:Hide()
+         ::oWndCode:Hide( .F. )
          AAdd( aShow, ::oWndCode )
       ENDIF
-      IF ::oWndPnt != NIL .AND. ::oWndPnt:lVisible
-         ::oWndPnt:Hide()
+      IF ::oWndPnt:lVisible
+         ::oWndPnt:Hide( .F. )
          AAdd( aShow, ::oWndPnt )
       ENDIF
-      IF ::oWndVars != NIL .AND. ::oWndVars:lVisible
-         ::oWndVars:Hide()
+      IF ::oWndVars:lVisible
+         ::oWndVars:Hide( .F. )
          AAdd( aShow, ::oWndVars )
       ENDIF
-      IF ::oWndStack != NIL .AND. ::oWndStack:lVisible
-         ::oWndStack:Hide()
+      IF ::oWndStack:lVisible
+         ::oWndStack:Hide( .F. )
          AAdd( aShow, ::oWndStack )
       ENDIF
       IF ::oWndCommand:lVisible
-         ::oWndCommand:Hide()
+         ::oWndCommand:Hide( .F. )
          AAdd( aShow, ::oWndCommand )
       ENDIF
 
@@ -2571,13 +2990,12 @@ METHOD ResizeCmdWnd( nLines ) CLASS HBDebugger
       ::oBrwStack:nRight := ::nMaxCol - 1
       ::oBrwStack:nBottom := ::nMaxRow - ::nCmdWndHight - 4
       ::oBrwStack:Configure()
-      IF ::oWndStack != NIL
-         ::oWndStack:Resize( , nRight + 1, ::nMaxRow - ::nCmdWndHight - 3, ::nMaxCol )
-      ENDIF
-      IF ::oWndVars != NIL
+      ::oWndStack:Resize( , nRight + 1, ::nMaxRow - ::nCmdWndHight - 3, ::nMaxCol )
+
+      IF ::oWndVars:lVisible
          ::oWndVars:Resize( , , , nRight )
       ENDIF
-      IF ::oWndPnt != NIL
+      IF ::oWndPnt:lVisible
          ::oWndPnt:Resize( , , , nRight )
       ENDIF
       ::oWndCode:Resize( nTop, 0, ::nMaxRow - ::nCmdWndHight - 3, nRight )
@@ -2599,14 +3017,45 @@ METHOD PROCEDURE SearchLine( cLine ) CLASS HBDebugger
 
 
 METHOD PROCEDURE Show() CLASS HBDebugger
+   
+   DispBegin()
 
-   ::SaveAppScreen()
-   ::oPullDown:Display()
-   ::oWndCode:Show( .T. )
+   If ::lMenuBar
+      ::oPullDown:Display()
+      ::BarDisplay()
+   EndIf
+
+    If ::nMaxRow != WINDOW_HEIGHT .Or. ::nMaxCol != WINDOW_WIDTH
+      ::nMaxRow := WINDOW_HEIGHT
+      ::nMaxCol := WINDOW_WIDTH
+      If ::lTiled
+         ::Tile()
+      EndIf   
+   EndIf
+
+   ::oWndCode:Show()
+
+   If ::lShowCallStack
+     ::ShowCallStack()
+   EndIf
+   ::loadVars()
+   ::ShowVars()
+   If ::oWndPnt:lVisible
+     ::WatchpointsShow()
+   EndIf
+
    ::oWndCommand:Show()
-   hb_DispOutAt( ::oWndCommand:nBottom - 1, ::oWndCommand:nLeft + 1, ">", __dbgColors()[ 2 ] )
 
-   ::BarDisplay()
+   hb_DispOutAt( ::oWndCommand:nBottom - 1, ::oWndCommand:nLeft + 1, ">", __DbgColors()[ 2 ] )
+
+   // show the topmost procedure
+   ::ShowCodeLine( 1 )
+
+   If ::oCurrentWnd:bGotFocus != Nil
+      Eval( ::oCurrentWnd:bGotFocus )
+   EndIf
+
+   DispEnd()
 
    RETURN
 
@@ -2638,117 +3087,76 @@ METHOD PROCEDURE ShowCallStack() CLASS HBDebugger
 
    ::lShowCallStack := .T.
 
-   IF ::oWndStack == NIL
+   DispBegin()
 
-      DispBegin()
-      // Resize code window
-      ::oWndCode:Resize( ,,, ::oWndCode:nRight - 16 )
-      // Resize vars window
-      IF ::oWndVars != NIL
-         ::oWndVars:Resize( ,,, ::oWndVars:nRight - 16 )
-      ENDIF
-      // Resize watchpoints window
-      IF ::oWndPnt != NIL
-         ::oWndPnt:Resize( ,,, ::oWndPnt:nRight - 16 )
-      ENDIF
-      DispEnd()
+   ::oBrwStack:RefreshAll()
+   ::oWndStack:Show( .f. )
 
-      IF ::aWindows[ ::nCurrentWindow ]:lFocused
-         ::aWindows[ ::nCurrentWindow ]:Show( .F. )
-      ENDIF
+   If ::lTiled
+      ::Tile()
+   EndIf
 
-      ::oWndStack := HBDbWindow():New( 1, ::nMaxCol - 15, ;
-                                       ::nMaxRow - ::nCmdWndHight - 3, ;
-                                       ::nMaxCol, "Calls" )
-      ::oWndStack:bKeyPressed  := {| nKey | ::CallStackProcessKey( nKey ) }
-      ::oWndStack:bLButtonDown := {|| ::CallStackProcessKey( K_LBUTTONDOWN ) }
-
-      // Maintain fixed window array order: code, monitor, watch, callstack, command
-      IF ::nCurrentWindow >= Len( ::aWindows )
-         ::nCurrentWindow++
-      ENDIF
-      hb_AIns( ::aWindows, Len( ::aWindows ), ::oWndStack, .T. )
-
-      IF ::oBrwStack == NIL
-         ::BuildBrowseStack()
-      ENDIF
-
-      ::oWndStack:bPainted := {|| ::oBrwStack:ColorSpec := __dbgColors()[ 2 ] + "," + ;
-         __dbgColors()[ 5 ] + "," + __dbgColors()[ 4 ] + "," + __dbgColors()[ 6 ], ;
-         ::oBrwStack:RefreshAll(), ::oBrwStack:ForceStable() }
-
-      ::oWndStack:Show( .F. )
-   ENDIF
+   DispEnd()
 
    RETURN
-
 
 METHOD PROCEDURE ShowCodeLine( nProc ) CLASS HBDebugger
 
    LOCAL nLine
-   LOCAL cPrgName
+   LOCAL cPrgPathName
 
    // we only update the stack window and up a new browse
    // to view the code if we have just broken execution
-   IF ! ::lGo
-      IF ::oWndStack != NIL
-         ::oBrwStack:RefreshAll()
-      ENDIF
+   IF ! ::lGo // .AND. !::lTrace
 
-      nLine := ::aProcStack[ nProc ][ HB_DBG_CS_LINE ]
-      cPrgName := ::aProcStack[ nProc ][ HB_DBG_CS_MODULE ]
-      IF nLine == NIL
-         ::oBrwText := NIL
-         ::oWndCode:Browser := NIL
-         ::oWndCode:SetCaption( ::aProcStack[ nProc ][ HB_DBG_CS_FUNCTION ] + ;
-            ": Code not available" )
+      ::oBrwStack:RefreshAll()
+      ::oBrwText:lCodeBlock := ::aProcStack[ nProc, HB_DBG_CS_CODEBLOCK ]
+      nLine                 := ::aProcStack[ nProc, HB_DBG_CS_LINE ]
+      cPrgPathName          := ::aProcStack[ nProc, HB_DBG_CS_MODULE ]
+      
+      IF nLine == NIL .Or. ::aProcStack[ nProc, HB_DBG_CS_STACKINDEX ] == 0
+         ::oBrwText:LoadFile( "", ::nTabWidth )
+         If ! Empty( ::aProcStack[ nProc, HB_DBG_CS_MODULE ] )
+            ::cPrgName := hb_FNameName( ::aProcStack[ nProc, HB_DBG_CS_MODULE ] ) + hb_FNameExt( ::aProcStack[ nProc, HB_DBG_CS_MODULE ] )
+            ::oWndCode:SetCaption( ::cPrgName + ": Code not available" )
+         Else
+            ::cPrgName := ""
+            ::oWndCode:SetCaption( ::aProcStack[ nProc, HB_DBG_CS_FUNCTION ] + ": Code not available" )
+         EndIf
          ::oWndCode:Refresh() // to force the window caption to update
+         ::oBrwText:SetActiveLine( 0 )
+         ::GotoLine( nLine )
          RETURN
       ENDIF
 
       IF ::lPPO
-         cPrgName := hb_FNameExtSet( cPrgName, ".ppo" )
+         cPrgPathName := hb_FNameExtSet( cPrgPathName, ".ppo" )
       ENDIF
 
-      IF ! Empty( cPrgName )
+      IF ! Empty( cPrgPathName ) .And. ! cPrgPathName == ::oBrwText:cFileName .And. ! ::ModuleMatch( cPrgPathName, ::cPrgName )
 
-         IF ! ::ModuleMatch( cPrgName, ::cPrgName ) .OR. ;
-            ::oBrwText == NIL
+         cPrgPathName := ::LocatePrgPath( cPrgPathName, ::aPathDirs )
+         
+         IF Empty( cPrgPathName )
+            
+            ::cPrgName := hb_FNameName( ::aProcStack[ nProc, HB_DBG_CS_MODULE ] ) + hb_FNameExt( ::aProcStack[ nProc, HB_DBG_CS_MODULE ] )
+            ::oBrwText:LoadFile( "", ::nTabWidth )
+            ::oWndCode:SetCaption( ::cPrgName + "  File not found" )
+            ::oWndCode:Refresh()
+            
+         ELSEIF ! cPrgPathName == ::oBrwText:cFileName
+            
+            ::cPrgName := hb_FNameName( cPrgPathName ) + hb_FNameExt( cPrgPathName )
+            ::oBrwText:LoadFile( cPrgPathName, ::nTabWidth )
+            ::RedisplayBreakpoints()               // check for breakpoints in this file and display them
+            ::oWndCode:SetCaption( ::cPrgName + IIF( ::aProcStack[ nProc, HB_DBG_CS_STACKINDEX ] <= 0, ": Without debug info", "" ) )
+            ::oWndCode:Refresh()                   // to force the window caption to update
 
-            IF ! hb_FileExists( cPrgName ) .AND. ! Empty( ::cPathForFiles )
-               cPrgName := ::LocatePrgPath( cPrgName )
-            ENDIF
-
-            ::cPrgName := cPrgName
-
-            IF ! hb_FileExists( cPrgName )
-               ::oBrwText := NIL
-               ::oWndCode:Browser := NIL
-               ::oWndCode:SetCaption( ::aProcStack[ nProc ][ HB_DBG_CS_MODULE ] + ;
-                  "  File not found" )
-               ::oWndCode:Refresh()
-               RETURN
-            ENDIF
-
-            IF ::oBrwText == NIL
-               ::oBrwText := HBBrwText():New( ::oWndCode:nTop + 1, ::oWndCode:nLeft + 1, ;
-                  ::oWndCode:nBottom - 1, ::oWndCode:nRight - 1, cPrgName, ;
-                  __dbgColors()[ 2 ] + "," + __dbgColors()[ 5 ] + "," + ;
-                  __dbgColors()[ 3 ] + "," + __dbgColors()[ 6 ], ;
-                  ::lLineNumbers, ::nTabWidth )
-
-               ::oWndCode:Browser := ::oBrwText
-            ELSE
-               ::oBrwText:LoadFile( cPrgName )
-            ENDIF
-
-            ::oWndCode:bPainted := {|| iif( ::oBrwText != NIL, ::oBrwText:RefreshAll():ForceStable(), ::oWndCode:Clear() ) }
-            ::oWndCode:SetCaption( ::cPrgName )
-            ::oWndCode:Refresh()       // to force the window caption to update
          ENDIF
-         ::oBrwText:SetActiveLine( nLine )
-         ::GotoLine( nLine )
+
       ENDIF
+      ::oBrwText:SetActiveLine( IIF( nProc == 1, nLine, 0 ) )
+      ::GotoLine( nLine )
    ENDIF
 
    RETURN
@@ -2765,144 +3173,34 @@ METHOD PROCEDURE ShowHelp( cTopic ) CLASS HBDebugger
 
 METHOD PROCEDURE ShowVars() CLASS HBDebugger
 
-   LOCAL oCol
-   LOCAL lRepaint := .F.
-   LOCAL nTop
-   LOCAL nBottom
-   LOCAL lWindowCreated := .F.
-   LOCAL aColors
-
    IF ::lGo
       RETURN
    ENDIF
 
-   IF ! ( ::lShowLocals .OR. ::lShowStatics .OR. ::lShowPrivates .OR. ;
-      ::lShowPublics .OR. ::lShowGlobals )
+   IF ! ( ::lShowLocals .OR. ::lShowStatics .OR. ::lShowPrivates .OR. ::lShowPublics .OR. ::lShowGlobals )
       RETURN
    ENDIF
 
+   ::oWndVars:cCaption := "Monitor:" + ;
+                          iif( ::lShowGlobals, " Global", "" ) + ;
+                          iif( ::lShowLocals, " Local", "" ) + ;
+                          iif( ::lShowStatics, " Static", "" ) + ;
+                          iif( ::lShowPrivates, " Private", "" ) + ;
+                          iif( ::lShowPublics, " Public", "" )
+
    DispBegin()
 
-   IF ::oWndVars == NIL
-
-      nTop := iif( ::oWndPnt != NIL .AND. ::oWndPnt:lVisible, ::oWndPnt:nBottom + 1, 1 )
-      nBottom := nTop + Min( MAX_VARS_HEIGHT, Len( ::aVars ) + 1 )
-
-      ::oWndVars := HBDbWindow():New( nTop, 0, nBottom, ;
-         ::nMaxCol - iif( ::oWndStack != NIL, ::oWndStack:nWidth(), 0 ), ;
-         "Monitor:" + ;
-         iif( ::lShowGlobals, " Global", "" ) + iif( ::lShowLocals, " Local", "" ) + ;
-         iif( ::lShowStatics, " Static", "" ) + iif( ::lShowPrivates, " Private", "" ) + ;
-         iif( ::lShowPublics, " Public", "" ) )
-
-      ::oWndVars:bLButtonDown := {| nMRow, nMCol | ::WndVarsLButtonDown( nMRow, nMCol ) }
-      ::oWndVars:bLDblClick   := {|| ::EditVar( ::oBrwVars:Cargo[ 1 ] ) }
-      ::oWndVars:bPainted     := {|| iif( Len( ::aVars ) > 0, ( ::oBrwVars:RefreshAll():ForceStable(), RefreshVarsS( ::oBrwVars ) ), ) }
-
-      ::oWndVars:bKeyPressed := {| nKey | iif( Len( ::aVars ) == 0, NIL, ( ;
-         iif( nKey == K_DOWN, ::oBrwVars:Down(), NIL ), ;
-         iif( nKey == K_UP, ::oBrwVars:Up(), NIL ), ;
-         iif( nKey == K_PGDN, ::oBrwVars:PageDown(), NIL ), ;
-         iif( nKey == K_PGUP, ::oBrwVars:PageUp(), NIL ), ;
-         iif( nKey == K_HOME, ::oBrwVars:GoTop(), NIL ), ;
-         iif( nKey == K_END, ::oBrwVars:GoBottom(), NIL ), ;
-         iif( nKey == K_ENTER, ::EditVar( ::oBrwVars:Cargo[ 1 ] ), NIL ), ;
-         iif( Len( ::aVars ) > 0, ::oBrwVars:ForceStable(), NIL ) ) ) }
-
-      // Maintain fixed window array order: code, monitor, watch, callstack, command
-      hb_AIns( ::aWindows, 2, ::oWndVars, .T. )
-      IF ::nCurrentWindow >= 2
-         ::nCurrentWindow++
-      ENDIF
-
-      lWindowCreated := .T.
-   ELSE
-
-      nTop := ::oWndVars:nTop
-      ::oWndVars:cCaption := "Monitor:" + ;
-         iif( ::lShowGlobals, " Global", "" ) + ;
-         iif( ::lShowLocals, " Local", "" ) + ;
-         iif( ::lShowStatics, " Static", "" ) + ;
-         iif( ::lShowPrivates, " Private", "" ) + ;
-         iif( ::lShowPublics, " Public", "" )
-
-      nBottom := ::oWndVars:nBottom
-      DO CASE
-      CASE Len( ::aVars ) == 0
-         IF ::oWndVars:nBottom - ::oWndVars:nTop > 1
-            nBottom := nTop + 1
-         ENDIF
-      CASE Len( ::aVars ) > ::oWndVars:nBottom - ::oWndVars:nTop - 1
-         nBottom := nTop + Min( Len( ::aVars ) + 1, MAX_VARS_HEIGHT )
-      CASE Len( ::aVars ) < ::oWndVars:nBottom - ::oWndVars:nTop - 1
-         nBottom := nTop + Len( ::aVars ) + 1
-      OTHERWISE
-         nBottom := ::oWndVars:nBottom
-      ENDCASE
-   ENDIF
-
-   IF Len( ::aVars ) > 0 .AND. ::oBrwVars == NIL
-      ::oBrwVars := HBDbBrowser():New( nTop + 1, 1, nBottom - 1, ;
-         ::nMaxCol - iif( ::oWndStack != NIL, ::oWndStack:nWidth(), 0 ) - 1 )
-      aColors := __dbgColors()
-      ::oBrwVars:Cargo := { 1, {} } // Actual highlighted row
-      ::oBrwVars:ColorSpec := aColors[ 2 ] + "," + aColors[ 5 ] + "," + aColors[ 3 ] + "," + aColors[ 6 ]
-      ::oBrwVars:goTopBlock := {|| ::oBrwVars:cargo[ 1 ] := Min( 1, Len( ::aVars ) ) }
-      ::oBrwVars:goBottomBlock := {|| ::oBrwVars:cargo[ 1 ] := Max( 1, Len( ::aVars ) ) }
-      ::oBrwVars:skipBlock := {| nSkip, nOld | ;
-         nOld := ::oBrwVars:Cargo[ 1 ], ;
-         ::oBrwVars:Cargo[ 1 ] += nSkip, ;
-         ::oBrwVars:Cargo[ 1 ] := Min( Max( ::oBrwVars:Cargo[ 1 ], 1 ), Len( ::aVars ) ), ;
-         ::oBrwVars:Cargo[ 1 ] - nOld }
-
-      oCol := HBDbColumnNew( "", ;
-         {|| PadR( hb_ntos( ::oBrwVars:Cargo[ 1 ] - 1 ) + ") " + ;
-         ::VarGetInfo( ::aVars[ Max( ::oBrwVars:Cargo[ 1 ], 1 ) ] ), ;
-         ::oWndVars:nWidth() - 2 ) } )
-      ::oBrwVars:AddColumn( oCol )
-      AAdd( ::oBrwVars:Cargo[ 2 ], ::aVars )
-      oCol:DefColor := { 1, 2 }
-      ::oBrwVars:ForceStable()
-   ELSEIF Len( ::aVars ) == 0
-      ::oBrwVars := NIL
-      ::oWndVars:Browser := NIL
-   ENDIF
-
-   ::oWndVars:Browser := ::oBrwVars
-
-   IF lWindowCreated
+   If ::lTiled
       ::oWndVars:Show()
-      ::ResizeWindows( ::oWndVars )
-
-   ELSE
-
-      IF ::oBrwVars != NIL
-         IF ::oBrwVars:cargo[ 1 ] <= 0
-            ::oBrwVars:cargo[ 1 ] := 1
-         ENDIF
-      ENDIF
-
-      IF Len( ::aVars ) == 0
-         IF nBottom == ::oWndVars:nBottom
-            /* We still need to redraw window caption, it could have changed */
-            ::oWndVars:Refresh()
-         ENDIF
-      ENDIF
-      IF nBottom != ::oWndVars:nBottom
-         ::oWndVars:Resize( ,, nBottom )
-         lRepaint := .T.
-      ELSE
-         IF ::oBrwVars != NIL
-            ::oBrwVars:RefreshAll():ForceStable()
-         ENDIF
-         ::oWndVars:Refresh()
-      ENDIF
-      IF ! ::oWndVars:lVisible .OR. lRepaint
-         ::ResizeWindows( ::oWndVars )
-      ENDIF
-   ENDIF
+      ::Tile()
+   Else
+      ::oWndVars:Resize( ,, ::oWndVars:nTop + Min( Len( ::aVars ) + 1, 5 ) )
+      ::oWndVars:Show()
+      ::oWndVars:RefreshAll()
+   EndIf
 
    DispEnd()
+   
 
    RETURN
 
@@ -2910,24 +3208,22 @@ METHOD PROCEDURE ShowVars() CLASS HBDebugger
 METHOD PROCEDURE Stack( cParam ) CLASS HBDebugger
 
    SWITCH iif( HB_ISSTRING( cParam ), cParam, "" )
-   CASE "ON"
-      ::lShowCallStack := .T.
-      EXIT
-   CASE "OFF"
-      ::lShowCallStack := .F.
-      EXIT
-   OTHERWISE
-      ::lShowCallStack := ! ::lShowCallStack
+      CASE "ON"
+         ::lShowCallStack := .T.
+         EXIT
+      CASE "OFF"
+         ::lShowCallStack := .F.
+         EXIT
+      OTHERWISE
+         ::lShowCallStack := ! ::lShowCallStack
    ENDSWITCH
 
    ::oPulldown:GetItemByIdent( "CALLSTACK" ):checked := ::lShowCallStack
 
-   IF ::lActive
-      IF ::lShowCallStack
-         ::ShowCallStack()
-      ELSE
-         ::HideCallStack()
-      ENDIF
+   IF ::lShowCallStack
+      ::ShowCallStack()
+   ELSE
+      ::HideCallStack()
    ENDIF
 
    RETURN
@@ -2943,24 +3239,18 @@ METHOD PROCEDURE Static() CLASS HBDebugger
 
 METHOD PROCEDURE Step() CLASS HBDebugger
 
-   // we are starting to run again so reset to the deepest call if displaying stack
-   IF ::oBrwStack != NIL
-      ::oBrwStack:GoTop()
-   ENDIF
-
-   ::RestoreAppScreen()
-   ::RestoreAppState()
+   DispBegin()
+   ::oBrwStack:GoTop()
    ::Exit()
+   DispEnd()
 
    RETURN
 
 
 METHOD ToCursor() CLASS HBDebugger
 
-   IF ::IsValidStopLine( ::cPrgName, ::oBrwText:RowPos )
-      __dbgSetToCursor( ::pInfo, ::cPrgName, ::oBrwText:RowPos )
-      ::RestoreAppScreen()
-      ::RestoreAppState()
+   IF ::IsValidStopLine( ::cPrgName, ::oBrwText:nCurRow )
+      __dbgSetToCursor( ::pInfo, ::cPrgName, ::oBrwText:nCurRow )
       ::Exit()
    ENDIF
 
@@ -2975,22 +3265,22 @@ METHOD PROCEDURE BreakPointToggle( nLine, cFileName ) CLASS HBDebugger
 
    LOCAL nAt
 
-   IF ! ::lActive
-      RETURN
-   ENDIF
-
    IF nLine == NIL
       cFileName := ::cPrgName
-      nLine := ::oBrwText:RowPos
+      nLine     := ::oBrwText:nCurRow
    ENDIF
 
-   IF ( nAt := __dbgIsBreak( ::pInfo, cFileName, nLine ) ) >= 0
+   nAt := __dbgIsBreak( ::pInfo, cFileName, nLine )
+   IF nAt >= 0
       __dbgDelBreak( ::pInfo, nAt )
+       ::oBrwText:ToggleBreakPoint(nLine, .F.)
    ELSEIF ::IsValidStopLine( cFileName, nLine )
       __dbgAddBreak( ::pInfo, cFileName, nLine )
+       ::oBrwText:ToggleBreakPoint(nLine, .T.)
    ENDIF
 
-   ::oBrwText:RefreshAll():ForceStable()
+   ::oBrwText:RefreshCurrent()
+   ::oBrwText:ForceStable()
 
    RETURN
 
@@ -3053,6 +3343,7 @@ METHOD Trace() CLASS HBDebugger
 METHOD TracepointAdd( cExpr ) CLASS HBDebugger
 
    LOCAL aWatch
+   LOCAL nLastKey
 
    IF cExpr == NIL
       cExpr := AllTrim( ::InputBox( "Enter Tracepoint",, __dbgExprValidBlock() ) )
@@ -3066,13 +3357,14 @@ METHOD TracepointAdd( cExpr ) CLASS HBDebugger
    IF Empty( cExpr )
       RETURN Self
    ENDIF
-
+   nLastKey := LastKey()
    aWatch := { "tp", cExpr, NIL }
    ::RestoreAppState()
    __dbgAddWatch( ::pInfo, cExpr, .T. )
    ::SaveAppState()
    AAdd( ::aWatch, aWatch )
    ::WatchpointsShow()
+   hb_keySetLast( nLastKey )
 
    RETURN Self
 
@@ -3083,10 +3375,10 @@ METHOD VarGetInfo( aVar ) CLASS HBDebugger
    LOCAL cType
 
    SWITCH aVar[ HB_DBG_VAR_TYPE ]
-   CASE "G"  ; cType := "Global" ; EXIT
-   CASE "L"  ; cType := "Local" ; EXIT
-   CASE "S"  ; cType := "Static" ; EXIT
-   OTHERWISE ; cType := aVar[ HB_DBG_VAR_TYPE ]
+      CASE "G"  ; cType := "Global" ; EXIT
+      CASE "L"  ; cType := "Local" ; EXIT
+      CASE "S"  ; cType := "Static" ; EXIT
+      OTHERWISE ; cType := aVar[ HB_DBG_VAR_TYPE ]
    ENDSWITCH
 
    RETURN aVar[ HB_DBG_VAR_NAME ] + " <" + cType + ", " + ValType( uValue ) + ">: " + __dbgValToStr( uValue )
@@ -3095,9 +3387,9 @@ METHOD VarGetInfo( aVar ) CLASS HBDebugger
 METHOD VarGetValue( aVar ) CLASS HBDebugger
 
    SWITCH aVar[ HB_DBG_VAR_TYPE ]
-   CASE "G" ; RETURN __dbgVMVarGGet( aVar[ HB_DBG_VAR_FRAME ], aVar[ HB_DBG_VAR_INDEX ] )
-   CASE "L" ; RETURN __dbgVMVarLGet( __dbgProcLevel() - aVar[ HB_DBG_VAR_FRAME ], aVar[ HB_DBG_VAR_INDEX ] )
-   CASE "S" ; RETURN __dbgVMVarSGet( aVar[ HB_DBG_VAR_FRAME ], aVar[ HB_DBG_VAR_INDEX ] )
+      CASE "G" ; RETURN __dbgVMVarGGet( aVar[ HB_DBG_VAR_FRAME ], aVar[ HB_DBG_VAR_INDEX ] )
+      CASE "L" ; RETURN __dbgVMVarLGet( __dbgProcLevel() - aVar[ HB_DBG_VAR_FRAME ], aVar[ HB_DBG_VAR_INDEX ] )
+      CASE "S" ; RETURN __dbgVMVarSGet( aVar[ HB_DBG_VAR_FRAME ], aVar[ HB_DBG_VAR_INDEX ] )
    ENDSWITCH
 
    // Public or Private created in ::LoadVars(), value stored in HB_DBG_VAR_INDEX
@@ -3130,33 +3422,31 @@ METHOD VarSetValue( aVar, uValue ) CLASS HBDebugger
 
 METHOD PROCEDURE ViewSets() CLASS HBDebugger
 
-   LOCAL aSets := __dbgGetSETs()
-   LOCAL oWndSets := HBDbWindow():New( 1, 7, ::nMaxRow - 2, ::nMaxCol - 7, ;
-      "System Settings[1.." + hb_ntos( aTail( aSets )[ HB_DBG_SET_POS ] ) + "]", ::ClrModal() )
-   LOCAL oBrwSets := HBDbBrowser():new( oWndSets:nTop + 1, oWndSets:nLeft + 1, ;
-      oWndSets:nBottom - 1, oWndSets:nRight - 1 )
-   LOCAL nWidth := oWndSets:nRight - oWndSets:nLeft - 1
+   LOCAL aSets    := __dbgGetSETs()
+   LOCAL oWndSets := HBDbWindow():New( 1, 7, ::nMaxRow - 2, ::nMaxCol - 7, "System Settings[1.." + hb_ntos( aTail( aSets )[ HB_DBG_SET_POS ] ) + "]", ::ClrModal() )
+   LOCAL oBrwSets := HBDbBrowser():new( oWndSets:nTop + 1, oWndSets:nLeft + 1, oWndSets:nBottom - 1, oWndSets:nRight - 1 )
+   LOCAL nWidth   := oWndSets:nRight - oWndSets:nLeft - 1
    LOCAL oCol
 
-   oBrwSets:Cargo := { 1, {} } // Actual highlighted row
-   oBrwSets:autolite := .F.
-   oBrwSets:ColorSpec := ::ClrModal()
-   oBrwSets:goTopBlock := {|| oBrwSets:cargo[ 1 ] := 1 }
-   oBrwSets:goBottomBlock := {|| oBrwSets:cargo[ 1 ] := Len( oBrwSets:cargo[ 2 ][ 1 ] ) }
-   oBrwSets:skipBlock := {| nPos | ( nPos := ArrayBrowseSkip( nPos, oBrwSets ), oBrwSets:cargo[ 1 ] := ;
-      oBrwSets:cargo[ 1 ] + nPos, nPos ) }
-   oBrwSets:AddColumn( oCol := HBDbColumnNew( "", {|| aSets[ oBrwSets:cargo[ 1 ] ][ HB_DBG_SET_NAME ] } ) )
-   AAdd( oBrwSets:Cargo[ 2 ], aSets )
-   oCol:Width := 14
-   oCol:defcolor := { 1, 2 }
-   oBrwSets:AddColumn( oCol := HBDbColumnNew( "", ;
-      {|| PadR( __dbgValToExp( Set( aSets[ oBrwSets:cargo[ 1 ] ][ HB_DBG_SET_POS ] ) ), nWidth - 13 ) } ) )
-   oCol:defcolor := { 1, 3 }
-   oCol:width := 40
-   oWndSets:bPainted := {|| oBrwSets:ForceStable(), RefreshVarsS( oBrwSets ) }
-   oWndSets:bKeyPressed := {| nKey | SetsKeyPressed( nKey, oBrwSets, Len( aSets ), ;
-      oWndSets, "System Settings", ;
-      {|| ::EditSet( aSets[ oBrwSets:Cargo[ 1 ] ][ HB_DBG_SET_POS ], oBrwSets ) } ) }
+   oBrwSets:Cargo         := 1
+   oBrwSets:autolite      :=.f.
+   oBrwSets:ColorSpec     := ::ClrModal()
+   oBrwSets:GoTopBlock    := { || oBrwSets:cargo := 1 }
+   oBrwSets:GoBottomBlock := { || oBrwSets:cargo := Len( aSets ) }
+   oBrwSets:SkipBlock     := { | nSkip, nOld | nOld := oBrwSets:Cargo,;
+                                              oBrwSets:Cargo += nSkip,;
+                                              oBrwSets:Cargo := Min( Max( oBrwSets:Cargo, 1 ),;
+                                              Len( aSets ) ), oBrwSets:Cargo - nOld }
+   oBrwSets:AddColumn( ocol := TBColumnNew( "", { || PadR( aSets[ oBrwSets:cargo, 2 ], 12 ) } ) )
+   ocol:width               := 12
+   ocol:defcolor            := {1,2}
+   oBrwSets:AddColumn( oCol := TBColumnNew( "", { || PadR( __dbgValToStr( Set( aSets[ oBrwSets:cargo, 1 ] ) ), nWidth - 13 ) } ) )
+   ocol:defcolor            := {1,3}
+   ocol:width               := nWidth - 13
+   oWndSets:Browser         := oBrwSets
+   oWndSets:bPainted        := { || oBrwSets:RefreshAll():ForceStable(), HiLiteRow( oBrwSets ) }
+   oWndSets:bKeyPressed     := { | nKey | SetsKeyPressed( aSets, nKey, oBrwSets, oWndSets, "System Settings",;
+                                                          { || ::EditSet( aSets[ oBrwSets:Cargo, 1 ], oBrwSets ) } ) }
 
    oWndSets:ShowModal()
 
@@ -3168,19 +3458,42 @@ METHOD WatchGetInfo( nWatch ) CLASS HBDebugger
    LOCAL xVal
    LOCAL cType
    LOCAL lValid
+   LOCAL aVar
    LOCAL aWatch := ::aWatch[ nWatch ]
+   LOCAL nLastKey
 
-   ::RestoreAppState()
-   xVal := ::GetExprValue( nWatch, @lValid )
-   ::SaveAppState()
-
-   IF lValid
-      cType := ValType( xVal )
-      xVal  := __dbgValToStr( xVal )
-   ELSE
-      cType := "U"
-      xVal := "Undefined"
+   IF __dbgIsIdentifier( aWatch[ WP_EXPR ] )
+      aVar := __dbgGetVarWatch( ::pInfo, nWatch - 1, ::aProcStack[ ::oBrwStack:cargo, HB_DBG_CS_STACKINDEX ] )
+   
+      IF aVar != NIL
+         nLastKey := LastKey()
+         ::RestoreAppState()
+         xVal := __dbgGetExprValue( ::pInfo, nWatch, @lValid, ::aProcStack[ ::oBrwStack:cargo, HB_DBG_CS_STACKINDEX ] )
+         ::SaveAppState()
+         hb_keySetLast( nLastKey )
+         IF lValid
+            cType := ValType( xVal )
+            xVal  := __dbgValToStr( xVal )
+         ELSE
+            cType := "U"
+            xVal := "Undefined"
+         ENDIF
+         __dbgFreeVarWatch( aVar )
+      ELSE
+         cType := "U"
+         xVal := "Variable does not exist"
+      ENDIF
+   ELSE   
+      xVal := ::GetExprValue( nWatch, @lValid )
+      IF lValid
+         cType := ValType( xVal )
+         xVal  := __dbgValToStr( xVal )
+      ELSE
+         cType := "U"
+         xVal := "Undefined"
+      ENDIF
    ENDIF
+
 
    RETURN aWatch[ WP_EXPR ] + " <" + aWatch[ WP_TYPE ] + ", " + cType + ">: " + xVal
 
@@ -3214,22 +3527,21 @@ METHOD WatchpointDel( xPos ) CLASS HBDebugger
 
    LOCAL nPos := -1, lAll := .F.
 
-   IF ::oWndPnt != NIL .AND. ::oWndPnt:lVisible
-      DO CASE
-      CASE HB_ISSTRING( xPos )
+   IF ::oWndPnt:lVisible
+      IF Empty( xPos )
+         nPos := ::InputBox( "Enter item number to delete", ::oBrwPnt:cargo - 1 )
+         IF LastKey() == K_ESC
+            nPos := -1
+         ENDIF
+      ELSEIF HB_ISSTRING( xPos )
          IF Upper( xPos ) == "ALL"
             lAll := .T.
          ELSEIF IsDigit( xPos )
             nPos := Val( xPos )
          ENDIF
-      CASE HB_ISNUMERIC( xPos )
-         nPos := xPos
-      OTHERWISE
-         nPos := ::InputBox( "Enter item number to delete", ::oBrwPnt:cargo[ 1 ] - 1 )
-         IF LastKey() == K_ESC
-            nPos := -1
-         ENDIF
-      ENDCASE
+      ELSEIF HB_ISNUMERIC( xPos )
+         nPos := xPos - 1
+      ENDIF
 
       IF lAll .OR. ( nPos >= 0 .AND. nPos < Len( ::aWatch ) )
          ::oBrwPnt:gotop()
@@ -3252,27 +3564,110 @@ METHOD WatchpointDel( xPos ) CLASS HBDebugger
 
    RETURN Self
 
-
 METHOD WatchpointEdit( nPos ) CLASS HBDebugger
 
-   LOCAL cExpr := ::InputBox( "Enter Watchpoint", ::aWatch[ nPos ][ WP_EXPR ], __dbgExprValidBlock() )
+   LOCAL cVarName
+   LOCAL cVarStr
+   LOCAL aVar
+   LOCAL cExpr
    LOCAL aWatch
+   LOCAL oErr
+   LOCAL xResult
+   LOCAL lValid
+   LOCAL nLastKey
+   LOCAL xVal
+   
+   IF __dbgIsIdentifier( ::aWatch[ nPos, WP_EXPR ] )
+      aVar := __dbgGetVarWatch( ::pInfo, nPos - 1, ::aProcStack[ ::oBrwStack:cargo, HB_DBG_CS_STACKINDEX ] )
 
-   IF LastKey() == K_ESC
-      RETURN Self
+      IF aVar != NIL
+
+         cVarName := ::aWatch[ nPos, WP_EXPR ]
+         cVarStr  := ::EditValue( cVarName, aVar[ WP_VAR_VALUE ] )
+
+         IF LastKey() != K_ESC
+            nLastKey := LastKey()
+            ::RestoreAppState()
+            xResult := __dbgGetExprValue( ::pInfo, cVarStr, @lValid, ::aProcStack[ ::oBrwStack:cargo, HB_DBG_CS_STACKINDEX ] )
+            ::SaveAppState()
+            hb_keySetLast( nLastKey )
+            IF lValid
+               __dbgSetVarWatch( aVar[ WP_VAR_SCOPE ], xResult, ::aProcStack[ ::oBrwStack:cargo, HB_DBG_CS_STACKINDEX ] )
+            ELSE
+               oErr := xResult
+               IF oErr:ClassName() == "ERROR"
+                  xResult := oErr:operation + ": " + oErr:description
+                  IF HB_ISARRAY( oErr:args )
+                     xResult += "; arguments:"
+                     AEval( oErr:args, {| x, i | xResult += iif( i == 1, " ", ", " ) + __dbgValToStr( x ) } )
+                  ENDIF
+               ELSE
+                  xResult := "Syntax error"
+               ENDIF
+                __dbgAlert( xResult )
+            ENDIF
+         ENDIF
+         
+         __dbgFreeVarWatch( aVar )
+      ELSE
+
+         cVarName := ::aWatch[ nPos, WP_EXPR ]
+         cVarStr  := ::EditValue( cVarName, NIL )
+         IF LastKey() != K_ESC
+            nLastKey := LastKey()
+            ::RestoreAppState()
+            xResult := __dbgGetExprValue( ::pInfo, cVarStr, @lValid, ::aProcStack[ ::oBrwStack:cargo, HB_DBG_CS_STACKINDEX ] )
+            ::SaveAppState()
+            hb_keySetLast( nLastKey )
+            IF lValid
+               __mvPublic( cVarName )
+               __mvPut( cVarName, xResult )
+            ELSE
+               oErr := xResult
+               IF oErr:ClassName() == "ERROR"
+                  xResult := oErr:operation + ": " + oErr:description
+                  IF HB_ISARRAY( oErr:args )
+                     xResult += "; arguments:"
+                     AEval( oErr:args, {| x, i | xResult += iif( i == 1, " ", ", " ) + __dbgValToStr( x ) } )
+                  ENDIF
+               ELSE
+                  xResult := "Syntax error"
+               ENDIF
+                __dbgAlert( xResult )
+            ENDIF
+         ENDIF
+         
+      ENDIF
+   
+   ELSE
+      xVal := ::GetExprValue( nPos, @lValid )
+      IF lValid .AND. ValType( xVal ) $ "AHOPB"
+         ::EditValue( ::aWatch[ nPos, WP_EXPR ], xVal, .F. )
+      ELSE
+         cExpr := ::InputBox( "Enter Watchpoint", ::aWatch[ nPos, WP_EXPR ], __dbgExprValidBlock() )
+         IF LastKey() == K_ESC
+            RETURN Self
+         ENDIF
+
+         cExpr := AllTrim( cExpr )
+
+         IF Empty( cExpr )
+            RETURN Self
+         ENDIF
+
+         aWatch := { "wp", cExpr }
+
+         __dbgSetWatch( ::pInfo, nPos - 1, cExpr, .F. )
+         ::aWatch[ nPos ] := aWatch
+      ENDIF
+      
    ENDIF
 
-   cExpr := AllTrim( cExpr )
-
-   IF Empty( cExpr )
-      RETURN Self
+   IF ::oWndVars:lVisible
+      ::oWndVars:Refresh()
    ENDIF
-
-   aWatch := { "wp", cExpr }
-
-   __dbgSetWatch( ::pInfo, nPos - 1, cExpr, .F. )
-   ::aWatch[ nPos ] := aWatch
-   ::WatchpointsShow()
+   ::oBrwPnt:RefreshCurrent()
+   ::oBrwPnt:ForceStable()
 
    RETURN Self
 
@@ -3282,11 +3677,9 @@ METHOD WatchpointInspect( nPos ) CLASS HBDebugger
    LOCAL xValue
    LOCAL lValid
 
-   ::RestoreAppState()
-   xValue := ::GetExprValue( ::aWatch[ nPos ][ WP_EXPR ], @lValid )
-   ::SaveAppState()
+   xValue := ::GetExprValue( nPos, @lValid )
 
-   ::InputBox( ::aWatch[ nPos ][ WP_EXPR ], xValue,, .F. )
+   ::InputBox( ::aWatch[ nPos, WP_EXPR ], xValue,, .F. )
    ::RefreshVars()
 
    RETURN Self
@@ -3294,23 +3687,30 @@ METHOD WatchpointInspect( nPos ) CLASS HBDebugger
 
 METHOD PROCEDURE WatchpointsHide() CLASS HBDebugger
 
-   ::oWndPnt:Hide()
-   ::oWndCode:nTop := iif( ::oWndVars != NIL .AND. ::oWndVars:lVisible, ::oWndVars:nBottom + 1, 1 )
-   ::oBrwText:Resize( ::oWndCode:nTop + 1 )
-   IF ::aWindows[ ::nCurrentWindow ] == ::oWndPnt
-      ::NextWindow()
+   Local lFocused := ::oWndPnt:lFocused
+
+   DispBegin()
+   ::oWndPnt:Hide( .F. )
+
+   IF ::lTiled
+      ::Tile()
    ENDIF
+
+   IF lFocused
+      ::SetFocusCodeWindow()
+   ELSE
+      ::oCurrentWnd:SetFocus( .t. )
+   ENDIF
+   DispEnd()
 
    RETURN
 
 
 METHOD PROCEDURE WatchpointsShow() CLASS HBDebugger
 
-   LOCAL oCol
-   LOCAL lRepaint := .F.
-   LOCAL nTop
-   LOCAL aColors
-   LOCAL nPos
+   Local nRow
+   Local nCol
+   Local nCursor
 
    IF ::lGo
       RETURN
@@ -3320,96 +3720,31 @@ METHOD PROCEDURE WatchpointsShow() CLASS HBDebugger
       RETURN
    ENDIF
 
-   IF ::oWndPnt == NIL
+   nRow    := Row()
+   nCol    := Col()
+   nCursor := SetCursor()
 
-      nTop := iif( ::oWndVars != NIL .AND. ::oWndVars:lVisible, ::oWndVars:nBottom, 0 ) + 1
+   DispBegin()
 
-      ::oWndPnt := HBDbWindow():New( nTop, ;
-         0, ;
-         nTop + Min( 4, Len( ::aWatch ) ) + 1, ;
-         ::nMaxCol - iif( ::oWndStack != NIL, ::oWndStack:nWidth(), 0 ), ;
-         "Watch" )
+   If ::oBrwPnt:cargo > Len( ::aWatch )
+      ::oBrwPnt:cargo := Len( ::aWatch )
+   ElseIf ::oBrwPnt:cargo < 1
+      ::oBrwPnt:cargo := 1
+   EndIf
 
-#if 0
-      ::oBrwText:Resize( ::oWndPnt:nBottom + 1 )
-      ::oWndCode:nTop := ::oWndPnt:nBottom + 1
-      ::oBrwText:Resize( ::oWndCode:nTop + 1 )
-      ::oBrwText:RefreshAll()
-      ::oWndCode:SetFocus( .T. )
-
-      ::oWndPnt:bLButtonDown := {| nMRow, nMCol | ::WndVarsLButtonDown( nMRow, nMCol ) }
-      ::oWndPnt:bLDblClick   := {| nMRow, nMCol | ::EditVar( ::oBrwPnt:Cargo[ 1 ] ) }
-#endif
-
-      ::oBrwPnt := HBDbBrowser():New( nTop + 1, 1, ::oWndPnt:nBottom - 1, ::nMaxCol - iif( ::oWndStack != NIL, ;
-         ::oWndStack:nWidth(), 0 ) - 1 )
-
-      ::oWndPnt:Browser := ::oBrwPnt
-
-      ::oBrwPnt:Cargo := { 1, {} } // Actual highlighted row
-      aColors := __dbgColors()
-      ::oBrwPnt:ColorSpec := aColors[ 2 ] + "," + aColors[ 5 ] + "," + aColors[ 3 ] + "," + aColors[ 6 ]
-      ::oBrwPnt:goTopBlock := {|| ::oBrwPnt:cargo[ 1 ] := Min( 1, Len( ::aWatch ) ) }
-      ::oBrwPnt:goBottomBlock := {|| ::oBrwPnt:cargo[ 1 ] := Len( ::aWatch ) }
-      ::oBrwPnt:skipBlock := {| nSkip, nOld | nOld := ::oBrwPnt:Cargo[ 1 ], ;
-         ::oBrwPnt:Cargo[ 1 ] += nSkip, ;
-         ::oBrwPnt:Cargo[ 1 ] := Min( Max( ::oBrwPnt:Cargo[ 1 ], 1 ), ;
-         Len( ::aWatch ) ), ;
-         iif( Len( ::aWatch ) > 0, ::oBrwPnt:Cargo[ 1 ] - nOld, 0 ) }
-
-      oCol := HBDbColumnNew( "", ;
-         {|| PadR( iif( Len( ::aWatch ) > 0, ;
-                        hb_ntos( ::oBrwPnt:Cargo[ 1 ] - 1 ) + ") " + ;
-                           ::WatchGetInfo( Max( ::oBrwPnt:Cargo[ 1 ], 1 ) ), ;
-                        " " ), ::oWndPnt:nWidth() - 2 ) } )
-      ::oBrwPnt:AddColumn( oCol )
-      AAdd( ::oBrwPnt:Cargo[ 2 ], ::aWatch )
-      oCol:DefColor := { 1, 2 }
-
-      ::oWndPnt:bPainted := {|| iif( Len( ::aWatch ) > 0, ( ::oBrwPnt:RefreshAll():ForceStable(), RefreshVarsS( ::oBrwPnt ) /*, ::RefreshVars()*/ ) , ) }
-
-      ::oWndPnt:bKeyPressed := {| nKey | ( ;
-         iif( nKey == K_DOWN, ::oBrwPnt:Down(), NIL ), ;
-         iif( nKey == K_UP, ::oBrwPnt:Up(), NIL ), ;
-         iif( nKey == K_PGDN, ::oBrwPnt:PageDown(), NIL ), ;
-         iif( nKey == K_PGUP, ::oBrwPnt:PageUp(), NIL ), ;
-         iif( nKey == K_HOME, ::oBrwPnt:GoTop(), NIL ), ;
-         iif( nKey == K_END, ::oBrwPnt:GoBottom(), NIL ), ;
-         iif( nKey == K_DEL, ::WatchpointDel( ::oBrwPnt:Cargo[ 1 ] - 1 ), NIL ), ;
-         iif( nKey == K_ENTER, ::WatchpointEdit( ::oBrwPnt:Cargo[ 1 ] ), NIL ), ;
-         iif( nKey == K_CTRL_ENTER, ::WatchpointInspect( ::oBrwPnt:Cargo[ 1 ] ), NIL ), ;
-         ::oBrwPnt:ForceStable() ) }
-
-      // Maintain fixed window array order: code, monitor, watch, callstack, command
-      nPos := iif( ::aWindows[ 2 ] == ::oWndVars, 3, 2 )
-      hb_AIns( ::aWindows, nPos, ::oWndPnt, .T. )
-      IF ::nCurrentWindow >= nPos
-         ::nCurrentWindow++
-      ENDIF
-
+   If ::lTiled
       ::oWndPnt:Show()
-      ::ResizeWindows( ::oWndPnt )
-   ELSE
-      IF ::oBrwPnt:cargo[ 1 ] <= 0
-         ::oBrwPnt:cargo[ 1 ] := 1
-      ENDIF
-      DispBegin()
-      DO CASE
-      CASE Len( ::aWatch ) > ::oWndPnt:nBottom - ::oWndPnt:nTop - 1
-         // Resize( top, left, bottom, right )
-         ::oWndPnt:Resize( ,, ::oWndPnt:nTop + Min( Len( ::aWatch ) + 1, 4 ) )
-         lRepaint := .T.
-      CASE Len( ::aWatch ) < ::oWndPnt:nBottom - ::oWndPnt:nTop - 1
-         ::oWndPnt:Resize( ,, ::oWndPnt:nTop + Len( ::aWatch ) + 1 )
-         lRepaint := .T.
-      OTHERWISE
-         ::oBrwPnt:RefreshAll():ForceStable()
-      ENDCASE
-      IF ! ::oWndPnt:lVisible .OR. lRepaint
-         ::ResizeWindows( ::oWndPnt )
-      ENDIF
-      DispEnd()
-   ENDIF
+      ::Tile()
+   Else
+      ::oWndPnt:Resize( ,, ::oWndPnt:nTop + Min( Len( ::aWatch ) + 1, 4 ) )
+      ::oWndPnt:Show()
+      ::oWndPnt:RefreshAll()
+   EndIf
+
+   SetPos( nRow, nCol )
+   SetCursor( nCursor )
+
+   DispEnd()
 
    RETURN
 
@@ -3439,79 +3774,127 @@ METHOD PROCEDURE WatchpointList() CLASS HBDebugger
 
 METHOD PROCEDURE WndVarsLButtonDown( nMRow, nMCol ) CLASS HBDebugger
 
-   IF nMRow > ::oWndVars:nTop .AND. ;
-      nMRow < ::oWndVars:nBottom .AND. ;
-      nMCol > ::oWndVars:nLeft .AND. ;
-      nMCol < ::oWndVars:nRight
+   IF ::oWndVars:IsCloseButton( nMRow, nMCol )
 
-      IF nMRow - ::oWndVars:nTop >= 1 .AND. ;
+      ::lShowPublics := ::lShowPrivates := ::lShowStatics := ::lShowLocals  := ::lShowGlobals  := ::lAll := .F.
+      ::RefreshVars()
+
+
+   ELSEIF nMRow > ::oWndVars:nTop    .and. ;
+          nMRow < ::oWndVars:nBottom .and. ;
+          nMCol > ::oWndVars:nLeft   .and. ;
+          nMCol < ::oWndVars:nRight
+
+      IF nMRow - ::oWndVars:nTop >= 1 .and. ;
          nMRow - ::oWndVars:nTop <= Len( ::aVars )
-
-         DO WHILE ::oBrwVars:RowPos > nMRow - ::oWndVars:nTop
+         DispBegin()
+         WHILE ::oBrwVars:RowPos > nMRow - ::oWndVars:nTop
             ::oBrwVars:Up()
             ::oBrwVars:ForceStable()
-         ENDDO
-
-         DO WHILE ::oBrwVars:RowPos < nMRow - ::oWndVars:nTop
+         END
+         WHILE ::oBrwVars:RowPos < nMRow - ::oWndVars:nTop
             ::oBrwVars:Down()
             ::oBrwVars:ForceStable()
-         ENDDO
-
+         END
+         DispEnd()
       ENDIF
+
    ENDIF
 
    RETURN
 
+METHOD WndPntLButtonDown( nMRow, nMCol ) CLASS HBDebugger
 
-STATIC PROCEDURE SetsKeyPressed( nKey, oBrwSets, nSets, oWnd, cCaption, bEdit )
+   IF ::oWndPnt:IsCloseButton( nMRow, nMCol )
 
-   SWITCH nKey
-   CASE K_UP
-      oBrwSets:up()
-      EXIT
+      ::WatchPointsHide()
 
-   CASE K_DOWN
-      oBrwSets:down()
-      EXIT
+   ELSEIF nMRow > ::oWndPnt:nTop    .and. ;
+          nMRow < ::oWndPnt:nBottom .and. ;
+          nMCol > ::oWndPnt:nLeft   .and. ;
+          nMCol < ::oWndPnt:nRight
 
-   CASE K_HOME
-   CASE K_CTRL_PGUP
-   CASE K_CTRL_HOME
-      oBrwSets:goTop()
-      EXIT
-
-   CASE K_END
-   CASE K_CTRL_PGDN
-   CASE K_CTRL_END
-      oBrwSets:goBottom()
-      EXIT
-
-   CASE K_PGDN
-
-      oBrwSets:pageDown()
-      EXIT
-
-   CASE K_PGUP
-
-      oBrwSets:pageUp()
-      EXIT
-
-   CASE K_ENTER
-
-      IF bEdit != NIL
-         Eval( bEdit )
+      IF nMRow - ::oWndPnt:nTop >= 1 .and. ;
+         nMRow - ::oWndPnt:nTop <= Len( ::aWatch )
+         DispBegin()
+         WHILE ::oBrwPnt:RowPos > nMRow - ::oWndPnt:nTop
+            ::oBrwPnt:Up()
+            ::oBrwPnt:ForceStable()
+         END
+         WHILE ::oBrwPnt:RowPos < nMRow - ::oWndPnt:nTop
+            ::oBrwPnt:Down()
+            ::oBrwPnt:ForceStable()
+         END
+         DispEnd()
       ENDIF
 
-      IF LastKey() == K_ENTER
-         hb_keyPut( K_DOWN )
-      ENDIF
-      EXIT
+   EndIf
 
-   ENDSWITCH
+   RETURN NIL
 
-   RefreshVarsS( oBrwSets )
 
-   oWnd:SetCaption( cCaption + "[" + hb_ntos( oBrwSets:Cargo[ 1 ] ) + ".." + hb_ntos( nSets ) + "]" )
+METHOD RedisplayBreakPoints() CLASS HBDebugger
+   LOCAL aBreak
+   
+   FOR EACH aBreak IN __dbgGetBreakPoints( ::pInfo )
+    IF hb_FileMatch( aBreak[ HB_DBG_BP_MODULE ], hb_FNameName( ::cPrgName ) )
+      ::oBrwText:ToggleBreakPoint(aBreak[ HB_DBG_BP_LINE ], .T.)
+    ENDIF
+  NEXT
+  RETURN Self
+
+METHOD SetFocusCodeWindow() CLASS HBDebugger
+
+   DispBegin()
+   ::oCurrentWnd := ::oWndCode
+   ::oWndCode:ToTop():SetFocus( .T. )
+   DispEnd()
+
+   RETURN Self
+
+STATIC PROCEDURE SetsKeyPressed( aData, nKey, oBrw, oWnd, cCaption, bEdit )
+
+   LOCAL lKeyProcessed := .F.
+
+   DO CASE
+      CASE nKey == K_UP
+              oBrw:Up()
+              lKeyProcessed := .T.
+      CASE nKey == K_DOWN
+              oBrw:Down()
+              lKeyProcessed := .T.
+      CASE nKey == K_HOME .or. (nKey == K_CTRL_PGUP) .or. (nKey == K_CTRL_HOME)
+              oBrw:GoTop()
+              lKeyProcessed := .T.
+      CASE nKey == K_END .or. (nkey == K_CTRL_PGDN) .or. (nkey == K_CTRL_END )
+              oBrw:GoBottom()
+              lKeyProcessed := .T.
+      CASE nKey == K_PGDN
+              oBrw:pageDown()
+              lKeyProcessed := .T.
+      CASE nKey == K_PGUP
+              oBrw:PageUp()
+              lKeyProcessed := .T.
+
+      CASE nKey == K_ENTER
+           if bEdit != nil
+              Eval( bEdit )
+              if LastKey() == K_ENTER
+                 oBrw:refreshCurrent():forceStable()
+                 oBrw:Down()
+              endif
+              lKeyProcessed := .T.
+           endif
+
+   ENDCASE
+
+   IF lKeyProcessed
+      DispBegin()
+      HiLiteRow( oBrw )
+      oWnd:SetCaption( cCaption + "[" + hb_ntos( aData[ oBrw:Cargo, 1 ] ) + ".." + hb_ntos( aData[ Len( aData ), 1 ] ) + "]" )
+      oWnd:ShowCaption()
+      DispEnd()
+   ENDIF
 
    RETURN
 
@@ -3523,29 +3906,39 @@ FUNCTION __dbgColors()
 FUNCTION __dbg()
    RETURN t_oDebugger
 
+Static Function PathsWithSubDirs( cPathList )
+   Local cDir
+   Local cPath
+   Local aAllPaths := {}
+   Local aPaths
+   Local aSubDirectories
+   Local aSubDir
 
-STATIC PROCEDURE RefreshVarsS( oBrowse )
+   aPaths := PathToArray( cPathList )
+   for each cDir In aPaths
+      cPath := AllTrim( cDir )
+      If Right( cPath, 2 ) == "\*" .Or. Right( cPath, 2 ) == "/*"
+         cPath := Left( cPath, Len( cPath ) - 2 )
+         AAdd( aAllPaths, cPath )
+         aSubDirectories := Directory( cPath + hb_ps() + "*", "D" )
+         For Each aSubDir In aSubDirectories 
+            If "D" $ aSubDir[ F_ATTR ] .And. ! Left( aSubDir[ F_NAME ], 1 ) == "." 
+               AEval( PathsWithSubDirs( cPath + hb_ps() + aSubDir[ F_NAME ] ), { | cItem | AAdd( aAllPaths, cItem ) } )
+            EndIf
+         Next
+      ElseIf Right( cPath, 1 ) == "*"
+         aSubDirectories := Directory( cPath, "D" )
+         For Each aSubDir In aSubDirectories 
+            If "D" $ aSubDir[ F_ATTR ] .And. ! Left( aSubDir[ F_NAME ], 1 ) == "." 
+               AEval( PathsWithSubDirs( cPath + hb_ps() + aSubDir[ F_NAME ] ), { | cItem | AAdd( aAllPaths, cItem ) } )
+            EndIf
+         Next
+      ElseIf ! Empty( cPath )
+         AAdd( aAllPaths, cPath )
+      EndIf
+   Next
 
-   LOCAL nLen := oBrowse:colCount
-
-   IF nLen == 2
-      oBrowse:deHilite():colPos := 2
-   ENDIF
-   oBrowse:deHilite():forceStable()
-
-   IF nLen == 2
-      oBrowse:hilite():colPos := 1
-   ENDIF
-   oBrowse:hilite()
-
-   RETURN
-
-
-STATIC FUNCTION ArrayBrowseSkip( nPos, oBrwSets )
-   RETURN iif( oBrwSets:cargo[ 1 ] + nPos < 1, 0 - oBrwSets:cargo[ 1 ] + 1, ;
-      iif( oBrwSets:cargo[ 1 ] + nPos > Len( oBrwSets:cargo[ 2 ][ 1 ] ), ;
-      Len( oBrwSets:cargo[ 2 ][ 1 ] ) - oBrwSets:cargo[ 1 ], nPos ) )
-
+Return aAllPaths 
 
 STATIC FUNCTION PathToArray( cList )
 
@@ -3585,7 +3978,7 @@ FUNCTION __dbgExprValidBlock( cType )
          cTypeName := "numeric"
          EXIT
       CASE "C"
-         cTypeName := "srtring"
+         cTypeName := "string"
          EXIT
       CASE "L"
          cTypeName := "logical"
@@ -3618,8 +4011,7 @@ FUNCTION __dbgExprValidBlock( cType )
                          ( __dbgAlert( "Must be " + cTypeName ), .F. ) ) }
    ENDIF
 
-   RETURN {| u | ! Type( u ) == "UE" .OR. ;
-                 ( __dbgAlert( "Expression error" ), .F. ) }
+   RETURN {| u | ! Type( u ) == "UE" .OR. ( __dbgAlert( "Expression error" ), .F. ) }
 
 
 FUNCTION __dbgInput( nRow, nCol, nWidth, cValue, bValid, cColor, nSize )
@@ -3668,7 +4060,7 @@ FUNCTION __dbgAChoice( nTop, nLeft, nBottom, nRight, aItems, cColors )
    oBrw:colorSpec := cColors
    nLen := nRight - nLeft + 1
    nRow := 1
-   oCol := HBDbColumnNew( "", {|| PadR( aItems[ nRow ], nLen ) } )
+   oCol := TBColumnNew( "", {|| PadR( aItems[ nRow ], nLen ) } )
    oBrw:AddColumn( oCol )
    oBrw:goTopBlock := {|| nRow := 1 }
    oBrw:goBottomBlock := {|| nRow := Len( aItems ) }
@@ -3678,14 +4070,14 @@ FUNCTION __dbgAChoice( nTop, nLeft, nBottom, nRight, aItems, cColors )
    DO WHILE .T.
       oBrw:forceStable()
       SWITCH __dbgInkey()
-      CASE K_UP;     oBrw:up();        EXIT
-      CASE K_DOWN;   oBrw:down();      EXIT
-      CASE K_PGUP;   oBrw:pageUp();    EXIT
-      CASE K_PGDN;   oBrw:pageDown();  EXIT
-      CASE K_HOME;   oBrw:goTop();     EXIT
-      CASE K_END;    oBrw:goBottom();  EXIT
-      CASE K_ESC;    nRow := 0
-      CASE K_ENTER;  RETURN nRow
+         CASE K_UP;     oBrw:up();        EXIT
+         CASE K_DOWN;   oBrw:down();      EXIT
+         CASE K_PGUP;   oBrw:pageUp();    EXIT
+         CASE K_PGDN;   oBrw:pageDown();  EXIT
+         CASE K_HOME;   oBrw:goTop();     EXIT
+         CASE K_END;    oBrw:goBottom();  EXIT
+         CASE K_ESC;    nRow := 0
+         CASE K_ENTER;  RETURN nRow
       ENDSWITCH
    ENDDO
 
@@ -3749,7 +4141,7 @@ FUNCTION __dbgValToStr( uVal )
    CASE "T" ; RETURN hb_TSToStr( uVal, .T. )
    CASE "O" ; RETURN "Class " + uVal:ClassName() + " object"
 #endif
-   CASE "N" ; RETURN Str( uVal )
+   CASE "N" ; RETURN AllTrim( Str( uVal ) )
    CASE "L" ; RETURN iif( uVal, ".T.", ".F." )
    CASE "S" ; RETURN "@" + uVal:name + "()"
    CASE "B" ; RETURN "{|| ... }"
@@ -3777,7 +4169,7 @@ FUNCTION __dbgValToExp( uVal )
 #else
    CASE "C"
    CASE "M" ; RETURN hb_StrToExp( uVal )
-   CASE "D" ; RETURN 'd"' + Left( hb_TSToStr( uVal, .F. ), 10 ) + '"'
+   CASE "D" ; RETURN 'CToD("' + DToC( uVal ) + '")' // 'd"' + Left( hb_TSToStr( uVal, .F. ), 10 ) + '"'
    CASE "T" ; RETURN 't"' + hb_TSToStr( uVal, .T. ) + '"'
    CASE "O" ; RETURN "{ " + uVal:className() + " Object }"
 #endif
@@ -3795,3 +4187,26 @@ FUNCTION __dbgValToExp( uVal )
    ENDSWITCH
 
    RETURN "U"
+
+STATIC FUNCTION __dbgFlushScreenBuffer()
+   LOCAL nInitCount := DispCount()
+   Local nCount
+   FOR nCount := 1 TO nInitCount
+      DispEnd()
+   NEXT
+RETURN nInitCount 
+
+STATIC PROCEDURE HiLiteRow( oBrowse )
+
+   LOCAL nLen := oBrowse:ColCount
+   LOCAL nPos
+
+   oBrowse:refreshCurrent():forceStable()
+   FOR nPos := 1 To nLen
+      oBrowse:colPos := nPos
+      oBrowse:dehilite():hilite()
+   NEXT
+   oBrowse:colPos := 1
+
+RETURN
+

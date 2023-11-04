@@ -53,14 +53,14 @@ static int hb_ctColorParam( int iParam, int iDefault )
 {
    int iColor;
 
-   if( HB_ISNUM( iParam ) )
-      iColor = hb_parni( iParam );
-   else if( hb_parclen( iParam ) > 0 )
+   if( hb_parclen( iParam ) > 0 )
    {
       iColor = hb_gtColorToN( hb_parc( iParam ) );
       if( iColor == -1 )
          iColor = iDefault;
-   }
+   } 
+   else if( HB_ISNUM( iParam ) )
+      iColor = hb_parni( iParam );
    else
       iColor = iDefault;
 
@@ -91,7 +91,9 @@ HB_FUNC( SETCLEARB )
 {
    HB_USHORT usNew;
 
-   if( HB_ISNUM( 1 ) )
+   if( HB_ISCHAR( 1 ) )
+      usNew = hb_cdpTextGetU16( hb_vmCDP(), hb_parc( 1 ), hb_parclen( 1 ) );
+   else if( HB_ISNUM( 1 ) )
    {
       int iChar = hb_parni( 1 );
       PHB_CODEPAGE cdp = hb_vmCDP();
@@ -99,8 +101,6 @@ HB_FUNC( SETCLEARB )
          iChar = hb_cdpGetU16( cdp, ( HB_UCHAR ) iChar );
       usNew = ( HB_USHORT ) iChar;
    }
-   else if( HB_ISCHAR( 1 ) )
-      usNew = hb_cdpTextGetU16( hb_vmCDP(), hb_parc( 1 ), hb_parclen( 1 ) );
    else
       usNew = ' ';  /* CT uses 255 => U+00A0 in CP437 */
 

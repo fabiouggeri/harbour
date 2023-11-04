@@ -364,11 +364,7 @@ METHOD MoveCursor( nKey ) CLASS HBEditor
 
    SWITCH hb_keyStd( nKey )
    CASE K_DOWN
-      IF ::lEditAllow
-         ::Goto( ::nRow + 1, ::nCol )
-      ELSE
-         ::Goto( ::nFirstRow + ::nNumRows, ::nCol )
-      ENDIF
+      ::Goto( ::nRow + 1, ::nCol )
       EXIT
 
    CASE K_PGDN
@@ -380,11 +376,7 @@ METHOD MoveCursor( nKey ) CLASS HBEditor
       EXIT
 
    CASE K_UP
-      IF ::lEditAllow
-         ::Goto( ::nRow - 1, ::nCol )
-      ELSE
-         ::Goto( ::nFirstRow - 1, ::nCol )
-      ENDIF
+      ::Goto( ::nRow - 1, ::nCol )
       EXIT
 
    CASE K_PGUP

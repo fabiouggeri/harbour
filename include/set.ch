@@ -126,9 +126,12 @@
 #define _SET_OSCODEPAGE       115 /* Harbour extension */
 #define _SET_TIMEFORMAT       116 /* Harbour extension */
 #define _SET_DBCODEPAGE       117 /* Harbour extension */
+#define _SET_RETRY_FILE_CASE  118 /* Harbour extension */
+#define _SET_DIR_RETURN_CASE  119 /* Harbour extension */
+#define _SET_FIX_PATH         120 /* Harbour extension */
 
 #define HB_SET_BASE           100
-#define HB_SET_COUNT          ( _SET_DBCODEPAGE - HB_SET_BASE + 1 )
+#define HB_SET_COUNT          ( _SET_FIX_PATH - HB_SET_BASE + 1 )
 
 #define HB_SET_CASE_MIXED     0
 #define HB_SET_CASE_LOWER     1

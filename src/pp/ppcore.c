@@ -766,8 +766,8 @@ static HB_BOOL hb_pp_canQuote( HB_BOOL fQuote, char * pBuffer, HB_SIZE nLen,
             cQuote = '\'';
          else if( pBuffer[ n ] == '\'' || pBuffer[ n ] == '"' )
             cQuote = pBuffer[ n ];
-         else if( HB_PP_ISILLEGAL( pBuffer[ n ] ) )
-            fQuote = HB_TRUE;
+//         else if( HB_PP_ISILLEGAL( pBuffer[ n ] ) )
+//            fQuote = HB_TRUE;
       }
       ++n;
    }
@@ -1358,6 +1358,17 @@ static void hb_pp_getLine( PHB_PP_STATE pState )
                   hb_pp_tokenAddNext( pState, pBuffer, n, HB_PP_TOKEN_KEYWORD );
             }
          }
+         else if( HB_PP_ISILLEGAL( ch ) )
+         {
+            pState->nSpaces++;
+            while( ++n < nLen && HB_PP_ISILLEGAL( pBuffer[ n ] ) )
+               pState->nSpaces++;
+            //char szCh[ 3 ];
+            //
+            //hb_pp_tokenAddNext( pState, pBuffer, ++n, HB_PP_TOKEN_NUL );
+            //hb_snprintf( szCh, sizeof( szCh ), "%02x", ch & 0xff );
+            //hb_pp_error( pState, 'E', HB_PP_ERR_ILLEGAL_CHAR, szCh );
+         }
          /* This is Clipper incompatible token - such characters are illegal
             and error message generated, to replicate this behavior is enough
             to change HB_PP_ISILLEGAL() macro */
@@ -1367,14 +1378,6 @@ static void hb_pp_getLine( PHB_PP_STATE pState )
                ;
 
             hb_pp_tokenAddNext( pState, pBuffer, n, HB_PP_TOKEN_TEXT );
-         }
-         else if( HB_PP_ISILLEGAL( ch ) )
-         {
-            char szCh[ 3 ];
-
-            hb_pp_tokenAddNext( pState, pBuffer, ++n, HB_PP_TOKEN_NUL );
-            hb_snprintf( szCh, sizeof( szCh ), "%02x", ch & 0xff );
-            hb_pp_error( pState, 'E', HB_PP_ERR_ILLEGAL_CHAR, szCh );
          }
          else if( HB_PP_ISDIGIT( ch ) )
          {

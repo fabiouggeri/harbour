@@ -73,8 +73,19 @@ PHB_ITEM hb_param( int iParam, long lMask )
             return pItem;
       }
 
-      if( ( pItem->type & ( HB_TYPE ) lMask ) || ( HB_TYPE ) lMask == HB_IT_ANY )
+      if( ( pItem->type & ( HB_TYPE ) lMask ) || ( HB_TYPE ) lMask == HB_IT_ANY ) 
+      {
          return pItem;
+      }
+#ifdef _XHB_COMPAT_
+      else
+      {
+         if( ( HB_TYPE ) lMask == HB_IT_NUMERIC && HB_IS_NUMERAL( pItem ) )
+         {
+            return pItem;
+         }
+      }
+#endif
    }
 
    return NULL;
@@ -420,8 +431,27 @@ int  hb_parl( int iParam )
       if( HB_IS_BYREF( pItem ) )
          pItem = hb_itemUnRef( pItem );
 
-      if( HB_IS_LOGICAL( pItem ) )
+      if( HB_IS_LOGICAL( pItem ) ) {
          return pItem->item.asLogical.value ? 1 : 0;
+      }
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_INTEGER( pItem ) )
+      {
+         return pItem->item.asInteger.value != 0 ? 1 : 0;
+      }
+      else if( HB_IS_LONG( pItem ) )
+      {
+         return pItem->item.asLong.value != 0 ? 1 : 0;
+      }
+      else if( HB_IS_DOUBLE( pItem ) )
+      {
+         return pItem->item.asDouble.value != 0.0 ? 1 : 0;
+      }
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+      {
+         return ( int ) pItem->item.asString.value[0];
+      }
+#endif
    }
 
    return 0;
@@ -442,6 +472,16 @@ int  hb_parldef( int iParam, int iDefValue )
 
       if( HB_IS_LOGICAL( pItem ) )
          return pItem->item.asLogical.value ? 1 : 0;
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_INTEGER( pItem ) )
+         return pItem->item.asInteger.value != 0 ? 1 : 0;
+      else if( HB_IS_LONG( pItem ) )
+         return pItem->item.asLong.value != 0 ? 1 : 0;
+      else if( HB_IS_DOUBLE( pItem ) )
+         return pItem->item.asDouble.value != 0.0 ? 1 : 0;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( int ) pItem->item.asString.value[0];
+#endif
    }
 
    return iDefValue;
@@ -466,12 +506,18 @@ double  hb_parnd( int iParam )
          return ( double ) pItem->item.asInteger.value;
       else if( HB_IS_LONG( pItem ) )
          return ( double ) pItem->item.asLong.value;
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( double ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( double ) pItem->item.asString.value[0];
+#endif
    }
 
    return 0;
 }
 
-int  hb_parni( int iParam )
+int hb_parni( int iParam )
 {
    HB_STACK_TLS_PRELOAD
 
@@ -488,8 +534,14 @@ int  hb_parni( int iParam )
          return pItem->item.asInteger.value;
       else if( HB_IS_LONG( pItem ) )
          return ( int ) pItem->item.asLong.value;
+#ifdef _XHB_COMPAT_
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_INT( pItem->item.asDouble.value );
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( int ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( int ) pItem->item.asString.value[0];
+#endif
    }
 
    return 0;
@@ -514,6 +566,14 @@ int  hb_parnidef( int iParam, int iDefValue )
          return ( int ) pItem->item.asLong.value;
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_INT( pItem->item.asDouble.value );
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_DOUBLE( pItem ) )
+         return HB_CAST_INT( pItem->item.asDouble.value );
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( int ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( int ) pItem->item.asString.value[0];
+#endif
    }
 
    return iDefValue;
@@ -538,6 +598,14 @@ long  hb_parnl( int iParam )
          return ( long ) pItem->item.asInteger.value;
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_LONG( pItem->item.asDouble.value );
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_DATETIME( pItem ) )
+         return ( long ) pItem->item.asDateTime.julian;
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( long ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( long ) pItem->item.asString.value[0];
+#endif
    }
 
    return 0;
@@ -562,6 +630,14 @@ long  hb_parnldef( int iParam, long lDefValue )
          return ( long ) pItem->item.asInteger.value;
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_LONG( pItem->item.asDouble.value );
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_DATETIME( pItem ) )
+         return ( long ) pItem->item.asDateTime.julian;
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( long ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( long ) pItem->item.asString.value[0];
+#endif
    }
 
    return lDefValue;
@@ -586,6 +662,14 @@ HB_ISIZ hb_parns( int iParam )
          return ( HB_ISIZ ) pItem->item.asInteger.value;
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_ISIZ( pItem->item.asDouble.value );
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_DATETIME( pItem ) )
+         return ( HB_ISIZ ) pItem->item.asDateTime.julian;
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( HB_ISIZ ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( HB_ISIZ ) pItem->item.asString.value[0];
+#endif
    }
 
    return 0;
@@ -610,6 +694,14 @@ HB_ISIZ hb_parnsdef( int iParam, HB_ISIZ nDefValue )
          return ( HB_ISIZ ) pItem->item.asInteger.value;
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_ISIZ( pItem->item.asDouble.value );
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_DATETIME( pItem ) )
+         return ( HB_ISIZ ) pItem->item.asDateTime.julian;
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( HB_ISIZ ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( HB_ISIZ ) pItem->item.asString.value[0];
+#endif
    }
 
    return nDefValue;
@@ -635,6 +727,14 @@ HB_LONGLONG  hb_parnll( int iParam )
          return ( HB_LONGLONG ) pItem->item.asInteger.value;
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_LONGLONG( pItem->item.asDouble.value );
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_DATETIME( pItem ) )
+         return ( HB_LONGLONG ) pItem->item.asDateTime.julian;
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( HB_LONGLONG ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( HB_LONGLONG ) pItem->item.asString.value[0];
+#endif
    }
 
    return 0;
@@ -660,6 +760,14 @@ HB_MAXINT hb_parnint( int iParam )
          return ( HB_MAXINT ) pItem->item.asInteger.value;
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_MAXINT( pItem->item.asDouble.value );
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_DATETIME( pItem ) )
+         return ( HB_MAXINT ) pItem->item.asDateTime.julian;
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( HB_MAXINT ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( HB_MAXINT ) pItem->item.asString.value[0];
+#endif
    }
 
    return 0;
@@ -684,6 +792,14 @@ HB_MAXINT hb_parnintdef( int iParam, HB_MAXINT nDefValue )
          return ( HB_MAXINT ) pItem->item.asInteger.value;
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_MAXINT( pItem->item.asDouble.value );
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_DATETIME( pItem ) )
+         return ( HB_MAXINT ) pItem->item.asDateTime.julian;
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( HB_MAXINT ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( HB_MAXINT ) pItem->item.asString.value[0];
+#endif
    }
 
    return nDefValue;
@@ -1056,6 +1172,10 @@ int  hb_parvl( int iParam, ... )
          return pItem->item.asLong.value != 0 ? 1 : 0;
       else if( HB_IS_DOUBLE( pItem ) )
          return pItem->item.asDouble.value != 0.0 ? 1 : 0;
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return pItem->item.asString.value[0] ? 1 : 0;
+#endif
       else if( HB_IS_ARRAY( pItem ) )
       {
          va_list va;
@@ -1091,6 +1211,12 @@ double  hb_parvnd( int iParam, ... )
          return ( double ) pItem->item.asInteger.value;
       else if( HB_IS_LONG( pItem ) )
          return ( double ) pItem->item.asLong.value;
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( double ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( double ) pItem->item.asString.value[0];
+#endif
       else if( HB_IS_ARRAY( pItem ) )
       {
          va_list va;
@@ -1126,6 +1252,12 @@ int  hb_parvni( int iParam, ... )
          return ( int ) pItem->item.asLong.value;
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_INT( pItem->item.asDouble.value );
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( int ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( int ) pItem->item.asString.value[0];
+#endif
       else if( HB_IS_ARRAY( pItem ) )
       {
          va_list va;
@@ -1164,6 +1296,12 @@ long  hb_parvnl( int iParam, ... )
       /* CA-Cl*pper does it */
       else if( HB_IS_DATETIME( pItem ) )
          return ( long ) pItem->item.asDateTime.julian;
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( long ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( long ) pItem->item.asString.value[0];
+#endif
       else if( HB_IS_ARRAY( pItem ) )
       {
          va_list va;
@@ -1199,6 +1337,14 @@ HB_ISIZ hb_parvns( int iParam, ... )
          return ( HB_ISIZ ) pItem->item.asInteger.value;
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_ISIZ( pItem->item.asDouble.value );
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_DATETIME( pItem ) )
+         return ( HB_ISIZ ) pItem->item.asDateTime.julian;
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( HB_ISIZ ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( HB_ISIZ ) pItem->item.asString.value[0];
+#endif
       else if( HB_IS_ARRAY( pItem ) )
       {
          va_list va;
@@ -1235,6 +1381,14 @@ HB_LONGLONG hb_parvnll( int iParam, ... )
          return ( HB_LONGLONG ) pItem->item.asInteger.value;
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_LONGLONG( pItem->item.asDouble.value );
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_DATETIME( pItem ) )
+         return ( HB_LONGLONG ) pItem->item.asDateTime.julian;
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( HB_LONGLONG ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( HB_LONGLONG ) pItem->item.asString.value[0];
+#endif
       else if( HB_IS_ARRAY( pItem ) )
       {
          va_list va;
@@ -1271,6 +1425,14 @@ HB_MAXINT hb_parvnint( int iParam, ... )
          return ( HB_MAXINT ) pItem->item.asInteger.value;
       else if( HB_IS_DOUBLE( pItem ) )
          return HB_CAST_MAXINT( pItem->item.asDouble.value );
+#ifdef _XHB_COMPAT_
+      else if( HB_IS_DATETIME( pItem ) )
+         return ( HB_MAXINT ) pItem->item.asDateTime.julian;
+      else if( HB_IS_LOGICAL( pItem ) )
+         return ( HB_MAXINT ) pItem->item.asLogical.value;
+      else if( HB_IS_STRING( pItem ) && pItem->item.asString.length == 1 )
+         return ( HB_MAXINT ) pItem->item.asString.value[0];
+#endif
       else if( HB_IS_ARRAY( pItem ) )
       {
          va_list va;

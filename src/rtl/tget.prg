@@ -1254,7 +1254,7 @@ METHOD unTransform() CLASS Get
          SWITCH ::cType
          CASE "C"
 
-            IF "R" $ ::cPicFunc
+            IF "R" $ ::cPicFunc .And. Len( ::cPicMask ) > 0
                xValue := ""
                FOR nFor := 1 TO Len( ::cPicMask )
                   IF hb_asciiUpper( SubStr( ::cPicMask, nFor, 1 ) ) $ "ANX9#!LY"

@@ -46,6 +46,9 @@
  *
  */
 
+
+#include <time.h>
+
 #include "hbapi.h"
 #include "hbapiitm.h"
 #include "hbapierr.h"
@@ -95,6 +98,46 @@ typedef struct
    int            uiErrorDOS;    /* The value of DosError() */
 } HB_ERRDATA, * PHB_ERRDATA;
 
+static void logerror( PHB_ITEM pError )
+{
+   char cProcName[ 1024 ];
+   char cFileName[ 1024 ];
+   HB_USHORT uLine = 0;
+   HB_USHORT ulCont = 1;
+   time_t t;
+   struct tm * pTime;
+
+   time(&t);
+   pTime = localtime(&t);
+
+   hb_tracefile( "interror.log" );
+
+   hb_procinfo( ulCont, cProcName, &uLine, cFileName );
+   if ( pError )
+   {
+      hb_tracelog( HB_TR_ALWAYS, cFileName, uLine, cProcName, 
+                   "%04d%02d%02d-%02d:%02d:%02d - Descricao: '%s' Operacao: '%s'", 
+                   pTime->tm_year + 1900, pTime->tm_mon + 1, pTime->tm_mday, pTime->tm_hour, pTime->tm_min, pTime->tm_sec, 
+                   hb_errGetDescription( pError ), 
+                   hb_errGetOperation( pError ) );
+      
+   } 
+   else 
+   {
+      hb_tracelog( HB_TR_ALWAYS, cFileName, uLine, cProcName, 
+                   "%04d%02d%02d-%02d:%02d:%02d", 
+                   pTime->tm_year + 1900, pTime->tm_mon + 1, pTime->tm_mday, pTime->tm_hour, pTime->tm_min, pTime->tm_sec );
+   }
+
+   hb_procinfo( ++ulCont, cProcName, &uLine, cFileName );
+   while ( cProcName[ 0 ] != '\0' )
+   {
+      hb_tracelog( HB_TR_ALWAYS, cFileName, uLine, cProcName, "");
+      hb_procinfo( ++ulCont, cProcName, &uLine, cFileName );
+   }
+}
+
+
 static void hb_errorDataRelease( void * Cargo )
 {
    PHB_ERRDATA pErrData = ( PHB_ERRDATA ) Cargo;
@@ -122,7 +165,10 @@ static HB_BOOL hb_errGetNumCode( int * piValue, const char * szOperation )
       }
 
       if( ! HB_IS_NUMERIC( pItem ) )
+      {
+         logerror( NULL );
          hb_errInternal( HB_EI_ERRRECFAILURE, NULL, NULL, NULL );
+      }
 
       *piValue = hb_itemGetNI( pItem );
       hb_itemRelease( pItem );
@@ -424,6 +470,7 @@ HB_FUNC( ERRORNEW )
 
 HB_FUNC( __ERRINHANDLER )
 {
+   logerror( NULL );
    hb_errInternal( HB_EI_ERRRECFAILURE, NULL, NULL, NULL );
 }
 
@@ -479,9 +526,9 @@ void hb_errInit( void )
    HB_TRACE( HB_TR_DEBUG, ( "hb_errInit()" ) );
 
    /* error function */
-   hb_dynsymNew( &s_symErrorNew );
+   hb_dynsymNew( &s_symErrorNew, HB_FALSE );
    /* init message */
-   hb_dynsymNew( &s_symmsgInit );
+   hb_dynsymNew( &s_symmsgInit, HB_FALSE );
 
    /* Create error class and base object */
    s_pError = hb_itemNew( NULL );
@@ -519,7 +566,10 @@ PHB_ITEM hb_errNew( void )
    HB_TRACE( HB_TR_DEBUG, ( "hb_errNew()" ) );
 
    if( ! s_pError || ! HB_IS_OBJECT( s_pError ) )
+   {
+      logerror( NULL );
       hb_errInternal( HB_EI_ERRRECFAILURE, NULL, NULL, NULL );
+   }
 
    pError = hb_arrayClone( s_pError );
    if( s_fErrInit )
@@ -550,11 +600,17 @@ HB_USHORT hb_errLaunch( PHB_ITEM pError )
 
       /* Check if we have a valid error handler */
       if( ! pErrData->errorBlock || ! HB_IS_EVALITEM( pErrData->errorBlock ) )
+      {
+         logerror( pError );
          hb_errInternal( HB_EI_ERRNOBLOCK, NULL, NULL, NULL );
+      }
 
       /* Check if the error launcher was called too many times recursively */
       if( pErrData->iLaunchCount == HB_ERROR_LAUNCH_MAX )
+      {
+         logerror( pError );
          hb_errInternal( HB_EI_ERRTOOMANY, NULL, NULL, NULL );
+      }
 
       /* Launch the error handler: "lResult := Eval( ErrorBlock(), oError )" */
       pErrData->iLaunchCount++;
@@ -608,11 +664,17 @@ HB_USHORT hb_errLaunch( PHB_ITEM pError )
          hb_itemRelease( pResult );
 
          if( bFailure )
+         {
+            logerror( pError );
             hb_errInternal( HB_EI_ERRRECFAILURE, NULL, NULL, NULL );
+         }
 
       }
       else
+      {
+         logerror( pError );
          hb_errInternal( HB_EI_ERRRECFAILURE, NULL, NULL, NULL );
+      }
    }
    else
       uiAction = E_RETRY;  /* Clipper does this, undocumented */
@@ -644,12 +706,18 @@ PHB_ITEM hb_errLaunchSubst( PHB_ITEM pError )
 
       /* Check if we have a valid error handler */
       if( ! pErrData->errorBlock || ! HB_IS_EVALITEM( pErrData->errorBlock ) )
+      {
+         logerror( pError );
          hb_errInternal( HB_EI_ERRNOBLOCK, NULL, NULL, NULL );
-
+      }
+      
       /* Check if the error launcher was called too many times recursively */
       if( pErrData->iLaunchCount == HB_ERROR_LAUNCH_MAX )
+      {
+         logerror( pError );
          hb_errInternal( HB_EI_ERRTOOMANY, NULL, NULL, NULL );
-
+      }
+      
       /* Launch the error handler: "xResult := Eval( ErrorBlock(), oError )" */
       pErrData->iLaunchCount++;
 
@@ -687,7 +755,10 @@ PHB_ITEM hb_errLaunchSubst( PHB_ITEM pError )
          /* If the canSubstitute flag has not been set,
             consider it as a failure. */
          if( ! ( uiFlags & EF_CANSUBSTITUTE ) )
+         {
+            logerror( pError );
             hb_errInternal( HB_EI_ERRRECFAILURE, NULL, NULL, NULL );
+         }
       }
    }
    else

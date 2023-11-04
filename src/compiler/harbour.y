@@ -206,7 +206,7 @@ extern void yyerror( HB_COMP_DECL, const char * );     /* parsing error manageme
 %right  NOT
 /*relational operators*/
 %right '=' EQ NE1 NE2
-%right '<' '>' LE GE '$'
+%right '<' '>' LE GE '$' IN
 /*mathematical operators*/
 %right  '+' '-'
 %right  '*' '/' '%'
@@ -983,6 +983,7 @@ ExprRelation: Expression EQ  Expression   { $$ = hb_compExprSetOperand( hb_compE
             | Expression NE1 Expression   { $$ = hb_compExprSetOperand( hb_compExprNewNE( $1, HB_COMP_PARAM ), $3, HB_COMP_PARAM ); }
             | Expression NE2 Expression   { $$ = hb_compExprSetOperand( hb_compExprNewNE( $1, HB_COMP_PARAM ), $3, HB_COMP_PARAM ); }
             | Expression '$' Expression   { $$ = hb_compExprSetOperand( hb_compExprNewIN( $1, HB_COMP_PARAM ), $3, HB_COMP_PARAM ); }
+            | Expression IN  Expression   { $$ = hb_compExprSetOperand( hb_compExprNewIN( $1, HB_COMP_PARAM ), $3, HB_COMP_PARAM ); }
             | Expression '=' Expression   { $$ = hb_compExprSetOperand( hb_compExprNewEqual( $1, HB_COMP_PARAM ), $3, HB_COMP_PARAM ); }
             ;
 

@@ -1158,7 +1158,12 @@ HB_FUNC( HPDF_PAGE_ELLIPSE )
 /* HPDF_Page_TextRect( hPage, nLeft, nTop, nRight, nBottom, cText, nAlign ) --> hStatus */
 HB_FUNC( HPDF_PAGE_TEXTRECT )
 {
-   hb_retnl( ( long ) HPDF_Page_TextRect( ( HPDF_Page ) hb_parptr( 1 ), ( HPDF_REAL ) hb_parnd( 2 ), ( HPDF_REAL ) hb_parnd( 3 ), ( HPDF_REAL ) hb_parnd( 4 ), ( HPDF_REAL ) hb_parnd( 5 ), hb_parc( 6 ), ( HPDF_TextAlignment ) hb_parni( 7 ), NULL ) );
+   HPDF_UINT uiLen;
+   
+   hb_retnl( ( long ) HPDF_Page_TextRect( ( HPDF_Page ) hb_parptr( 1 ), ( HPDF_REAL ) hb_parnd( 2 ), ( HPDF_REAL ) hb_parnd( 3 ), ( HPDF_REAL ) hb_parnd( 4 ), ( HPDF_REAL ) hb_parnd( 5 ), hb_parc( 6 ), ( HPDF_TextAlignment ) hb_parni( 7 ), &uiLen ) );
+   if ( HB_ISBYREF( 8 ) ) {
+      hb_itemPutNI( hb_param( 8, HB_IT_ANY ), (int) uiLen );
+   }
 }
 
 /* --- FONTS --- */

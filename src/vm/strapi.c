@@ -1061,3 +1061,4 @@ int hb_storstrlen_u16( int iEndian, const HB_WCHAR * szText, HB_SIZE nLen, int i
 
    return 0;
 }
+

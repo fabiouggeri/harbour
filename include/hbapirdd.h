@@ -1195,6 +1195,7 @@ extern HB_EXPORT void         hb_rddFlushAll( void );
 extern HB_EXPORT void         hb_rddUnLockAll( void );
 extern HB_EXPORT HB_BOOL      hb_rddGetNetErr( void );
 extern HB_EXPORT void         hb_rddSetNetErr( HB_BOOL fNetErr );
+extern HB_EXPORT HB_USHORT    hb_rddGetMaxWorkArea( void );
 
 extern HB_EXPORT HB_ERRCODE   hb_rddOpenTable(
                                  const char * szFileName, const char * szDriver,

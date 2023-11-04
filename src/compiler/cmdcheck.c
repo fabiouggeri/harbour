@@ -356,6 +356,15 @@ static const char * hb_compChkParseSwitch( HB_COMP_DECL, const char * szSwitch,
                   }
                   else
                      hb_setSetTrimFileName( HB_TRUE );
+               case 'C':
+                  szSwPtr += 2;
+                  if( *szSwPtr == '-' )
+                  {
+                     ++szSwPtr;
+                     hb_setSetRetryFileCase( HB_FALSE );
+                  }
+                  else
+                     hb_setSetRetryFileCase( HB_TRUE );
             }
             break;
 

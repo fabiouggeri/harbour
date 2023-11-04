@@ -1787,7 +1787,7 @@ HB_FUNC( DBSETRELATION )
          return;
       }
 
-      if( HB_ISNUM( 1 ) )
+      if( HB_ISNUMBER( 1 ) )
       {
          uiChildArea = ( HB_AREANO ) hb_parni( 1 );
       }

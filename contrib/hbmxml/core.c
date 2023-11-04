@@ -733,7 +733,7 @@ HB_FUNC( MXMLLOADFILE )
    HB_CBS_VAR *   pCbs = ( HB_CBS_VAR * ) hb_stackGetTSD( &s_cbs_var );
    FILE *         file;
 
-   if( HB_ISNIL( 1 ) || ( HB_ISNUM( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
+   if( HB_ISNIL( 1 ) || ( HB_ISNUMBER( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
       node_top = MXML_NO_PARENT;
    else
    {
@@ -751,7 +751,7 @@ HB_FUNC( MXMLLOADFILE )
       pCbs->type_cb = hb_param( 3, HB_IT_BLOCK | HB_IT_SYMBOL );
       cb = type_cb;
    }
-   else if( HB_ISNUM( 3 ) )
+   else if( HB_ISNUMBER( 3 ) )
    {
       switch( hb_parni( 3 ) )
       {
@@ -792,7 +792,7 @@ HB_FUNC( MXMLLOADSTRING )
    HB_CBS_VAR *   pCbs = ( HB_CBS_VAR * ) hb_stackGetTSD( &s_cbs_var );
 
 
-   if( HB_ISNIL( 1 ) || ( HB_ISNUM( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
+   if( HB_ISNIL( 1 ) || ( HB_ISNUMBER( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
       node_top = MXML_NO_PARENT;
    else
    {
@@ -810,7 +810,7 @@ HB_FUNC( MXMLLOADSTRING )
       pCbs->type_cb = hb_param( 3, HB_IT_BLOCK | HB_IT_SYMBOL );
       cb = type_cb;
    }
-   else if( HB_ISNUM( 3 ) )
+   else if( HB_ISNUMBER( 3 ) )
    {
       switch( hb_parni( 3 ) )
       {
@@ -839,7 +839,7 @@ HB_FUNC( MXMLNEWCDATA )
    void *        hString;
    mxml_node_t * node;
 
-   if( HB_ISNIL( 1 ) || ( HB_ISNUM( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
+   if( HB_ISNIL( 1 ) || ( HB_ISNUMBER( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
    {
       node = mxmlNewCDATA( MXML_NO_PARENT, hb_parstr_utf8( 2, &hString, NULL ) );
 
@@ -871,7 +871,7 @@ HB_FUNC( MXMLNEWELEMENT )
    void *        hName;
    mxml_node_t * node;
 
-   if( HB_ISNIL( 1 ) || ( HB_ISNUM( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
+   if( HB_ISNIL( 1 ) || ( HB_ISNUMBER( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
    {
       node = mxmlNewElement( MXML_NO_PARENT, hb_parstr_utf8( 2, &hName, NULL ) );
 
@@ -900,7 +900,7 @@ HB_FUNC( MXMLNEWELEMENT )
 
 HB_FUNC( MXMLNEWINTEGER )
 {
-   if( HB_ISNIL( 1 ) || ( HB_ISNUM( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
+   if( HB_ISNIL( 1 ) || ( HB_ISNUMBER( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
       mxml_node_ret( mxmlNewInteger( MXML_NO_PARENT, hb_parni( 2 ) ), 1 );
    else
    {
@@ -920,7 +920,7 @@ HB_FUNC( MXMLNEWOPAQUE )
    void *        hOpaque;
    mxml_node_t * node;
 
-   if( HB_ISNIL( 1 ) || ( HB_ISNUM( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
+   if( HB_ISNIL( 1 ) || ( HB_ISNUMBER( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
    {
       node = mxmlNewOpaque( MXML_NO_PARENT, hb_parstr_utf8( 2, &hOpaque, NULL ) );
 
@@ -949,7 +949,7 @@ HB_FUNC( MXMLNEWOPAQUE )
 
 HB_FUNC( MXMLNEWREAL )
 {
-   if( HB_ISNIL( 1 ) || ( HB_ISNUM( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
+   if( HB_ISNIL( 1 ) || ( HB_ISNUMBER( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
       mxml_node_ret( mxmlNewReal( MXML_NO_PARENT, hb_parnd( 2 ) ), 1 );
    else
    {
@@ -969,7 +969,7 @@ HB_FUNC( MXMLNEWTEXT )
    void *        hString;
    mxml_node_t * node;
 
-   if( HB_ISNIL( 1 ) || ( HB_ISNUM( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
+   if( HB_ISNIL( 1 ) || ( HB_ISNUMBER( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
    {
       node = mxmlNewText( MXML_NO_PARENT, hb_parnidef( 2, 0 ),
                           hb_parstr_utf8( 3, &hString, NULL ) );
@@ -1130,7 +1130,7 @@ HB_FUNC( MXMLSAXLOADFILE )
    HB_CBS_VAR *   pCbs   = ( HB_CBS_VAR * ) hb_stackGetTSD( &s_cbs_var );
    FILE *         file;
 
-   if( HB_ISNIL( 1 ) || ( HB_ISNUM( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
+   if( HB_ISNIL( 1 ) || ( HB_ISNUMBER( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
       node_top = MXML_NO_PARENT;
    else
    {
@@ -1148,7 +1148,7 @@ HB_FUNC( MXMLSAXLOADFILE )
       pCbs->type_cb = hb_param( 3, HB_IT_BLOCK | HB_IT_SYMBOL );
       cb = type_cb;
    }
-   else if( HB_ISNUM( 3 ) )
+   else if( HB_ISNUMBER( 3 ) )
    {
       switch( hb_parni( 3 ) )
       {
@@ -1199,7 +1199,7 @@ HB_FUNC( MXMLSAXLOADSTRING )
    HB_CBS_VAR *   pCbs   = ( HB_CBS_VAR * ) hb_stackGetTSD( &s_cbs_var );
    const char *   s;
 
-   if( HB_ISNIL( 1 ) || ( HB_ISNUM( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
+   if( HB_ISNIL( 1 ) || ( HB_ISNUMBER( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
       node_top = MXML_NO_PARENT;
    else
    {
@@ -1217,7 +1217,7 @@ HB_FUNC( MXMLSAXLOADSTRING )
       pCbs->type_cb = hb_param( 3, HB_IT_BLOCK | HB_IT_SYMBOL );
       cb = type_cb;
    }
-   else if( HB_ISNUM( 3 ) )
+   else if( HB_ISNUMBER( 3 ) )
    {
       switch( hb_parni( 3 ) )
       {
@@ -1659,7 +1659,7 @@ HB_FUNC( MXMLNEWCUSTOM )
       mxml_node_t * parent = MXML_NO_PARENT;
       mxml_node_t * node   = NULL;
 
-      if( HB_ISNIL( 1 ) || ( HB_ISNUM( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
+      if( HB_ISNIL( 1 ) || ( HB_ISNUMBER( 1 ) && hb_parni( 1 ) == MXML_NO_PARENT ) )
          node = mxmlNewCustom( MXML_NO_PARENT, pItem, custom_destroy_cb );
       else
       {

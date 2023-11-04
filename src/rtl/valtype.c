@@ -64,7 +64,7 @@ HB_FUNC( HB_ISNIL )
 
 HB_FUNC( HB_ISNUMERIC )
 {
-   hb_retl( HB_ISNUM( 1 ) );
+   hb_retl( HB_ISNUMBER( 1 ) );
 }
 
 HB_FUNC( HB_ISLOGICAL )

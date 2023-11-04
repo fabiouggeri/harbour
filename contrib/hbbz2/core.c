@@ -224,7 +224,7 @@ HB_FUNC( HB_BZ2_COMPRESSBOUND )
 {
    if( HB_ISCHAR( 1 ) )
       hb_retnint( hb_bz2CompressBound( hb_parclen( 1 ) ) );
-   else if( HB_ISNUM( 1 ) )
+   else if( HB_ISNUMBER( 1 ) )
       hb_retnint( hb_bz2CompressBound( ( HB_SIZE ) hb_parnint( 1 ) ) );
    else
       hb_errRT_BASE_SubstR( EG_ARG, 3012, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
@@ -279,7 +279,7 @@ HB_FUNC( HB_BZ2_COMPRESS )
          }
          else
          {
-            nDstLen = HB_ISNUM( 2 ) ? ( HB_SIZE ) hb_parnint( 2 ) :
+            nDstLen = HB_ISNUMBER( 2 ) ? ( HB_SIZE ) hb_parnint( 2 ) :
                       ( HB_SIZE ) hb_bz2CompressBound( nLen );
             pDest = ( char * ) hb_xalloc( nDstLen + 1 );
          }
@@ -337,7 +337,7 @@ HB_FUNC( HB_BZ2_UNCOMPRESS )
          }
          else
          {
-            nDstLen = HB_ISNUM( 2 ) ? ( HB_SIZE ) hb_parnint( 2 ) :
+            nDstLen = HB_ISNUMBER( 2 ) ? ( HB_SIZE ) hb_parnint( 2 ) :
                       hb_bz2UncompressedSize( szData, nLen, &iResult );
             if( iResult == BZ_OK )
             {

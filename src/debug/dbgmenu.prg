@@ -55,6 +55,12 @@
 #xcommand SEPARATOR => HBDbMenu():AddItem( HBDbMenuItem():New( "-" ) )
 #xcommand ENDMENU => ATail( HBDbMenu():aMenus ):Build()
 
+#ifdef __PLATFORM__LINUX
+   #define TRACE_KEY_NAME "F12"
+#else
+   #define TRACE_KEY_NAME "F10"
+#endif
+
 FUNCTION __dbgBuildMenu( oDebugger )  // Builds the debugger pulldown menu
 
    LOCAL oMenu
@@ -97,13 +103,14 @@ FUNCTION __dbgBuildMenu( oDebugger )  // Builds the debugger pulldown menu
          MENUITEM " ~Animate" IDENT "ANIMATE" ;
             ACTION ( oDebugger:ToggleAnimate(), oDebugger:Animate() ) ;
             CHECKED oDebugger:lAnimate
-         MENUITEM " ~Step              F8 " ACTION oDebugger:Step()
-         MENUITEM " ~Trace            F10"  ACTION oDebugger:Trace()
-         MENUITEM " ~Go                F5"  ACTION oDebugger:Go()
-         MENUITEM " to ~Cursor         F7"  ACTION oDebugger:ToCursor()
-         MENUITEM " ~Next routine Ctrl-F5"  ACTION oDebugger:NextRoutine()
+         MENUITEM " ~Step               F8 "              ACTION oDebugger:Step()
+         MENUITEM " ~Trace             " + TRACE_KEY_NAME ACTION oDebugger:Trace()
+         MENUITEM " ~Go                 F5"               ACTION oDebugger:Go()
+         MENUITEM " to ~Cursor          F7"               ACTION oDebugger:ToCursor()
+         MENUITEM " ~Next routine  Ctrl-F5"               ACTION oDebugger:NextRoutine()
+         MENUITEM " Step ~Out     Ctrl-F10"               ACTION oDebugger:StepOut()
          SEPARATOR
-         MENUITEM " s~Peed..."              ACTION oDebugger:Speed()
+         MENUITEM " s~Peed..."                            ACTION oDebugger:Speed()
       ENDMENU
 
       MENUITEM " ~Point "
@@ -157,12 +164,16 @@ FUNCTION __dbgBuildMenu( oDebugger )  // Builds the debugger pulldown menu
          MENUITEM " ~Line Numbers" IDENT "LINE" ;
             ACTION oDebugger:LineNumbers() ;
             CHECKED oDebugger:lLineNumbers
-         MENUITEM " ~Exchange Screens"      ACTION oDebugger:NotSupported()
+         MENUITEM " ~Exchange Screens" IDENT "EXCHANGE";
+            ACTION oDebugger:ExchangeScreens() ;
+            CHECKED oDebugger:lExchangeScreens
          MENUITEM " swap on ~Input"         ACTION oDebugger:NotSupported()
          MENUITEM " code~Block Trace" IDENT "CODEBLOCK" ;
             ACTION oDebugger:CodeblockTrace() ;
             CHECKED oDebugger:lCBTrace
-         MENUITEM " ~Menu Bar"              ACTION oDebugger:NotSupported()
+         MENUITEM " ~Menu Bar" IDENT "MENU";
+            ACTION oDebugger:MenuBar() ;
+            CHECKED oDebugger:lMenuBar
          MENUITEM " mono ~Display" IDENT "MONO";
             ACTION oDebugger:MonoDisplay() ;
             CHECKED oDebugger:lMonoDisplay
@@ -181,12 +192,12 @@ FUNCTION __dbgBuildMenu( oDebugger )  // Builds the debugger pulldown menu
       MENU
          MENUITEM " ~Next      Tab "        ACTION oDebugger:NextWindow()
          MENUITEM " ~Prev   Sh-Tab"         ACTION oDebugger:PrevWindow()
-         MENUITEM " ~Move"                  ACTION oDebugger:NotSupported()
-         MENUITEM " ~Size"                  ACTION oDebugger:NotSupported()
-         MENUITEM " ~Zoom       F2"         ACTION oDebugger:NotSupported()
-         MENUITEM " ~Iconize"               ACTION oDebugger:NotSupported()
+         MENUITEM " ~Move"                  ACTION oDebugger:MoveWindow()
+         MENUITEM " ~Size"                  ACTION oDebugger:Size()
+         MENUITEM " ~Zoom       F2"         ACTION oDebugger:Zoom()
+         MENUITEM " ~Iconize"               ACTION oDebugger:Iconize()
          SEPARATOR
-         MENUITEM " ~Tile"                  ACTION oDebugger:NotSupported()
+         MENUITEM " ~Tile"                  ACTION oDebugger:Tile()
       ENDMENU
 
       MENUITEM " ~Help "

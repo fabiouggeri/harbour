@@ -196,7 +196,7 @@ HB_FUNC( HB_TRANSLATE )
 
 HB_FUNC( HB_UTF8CHR )
 {
-   if( HB_ISNUM( 1 ) )
+   if( HB_ISNUMBER( 1 ) )
    {
       char utf8Char[ HB_MAX_CHAR_LEN ];
       int iLen;

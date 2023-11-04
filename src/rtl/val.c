@@ -63,6 +63,7 @@ static void hb_val( HB_BOOL fExt )
 
       fDbl = hb_valStrnToNum( szText, iLen, &lValue, &dValue, &iDec, &iWidth );
 
+
       if( fExt )
       {
          iLen = hb_parnidef( 2, iLen );
@@ -85,7 +86,7 @@ static void hb_val( HB_BOOL fExt )
       if( fDbl )
          hb_retndlen( dValue, iWidth, iDec );
       else
-         hb_retnintlen( lValue, iWidth );
+         hb_retnintlen( lValue, iLen );
    }
    else
       hb_errRT_BASE_SubstR( EG_ARG, 1098, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );

@@ -66,7 +66,7 @@ HB_FUNC( DISPBOX )
 
          if( pszColor )
             iColor = hb_gtColorToN( pszColor );
-         else if( HB_ISNUM( 6 ) )
+         else if( HB_ISNUMBER( 6 ) )
             iColor = hb_parni( 6 );
          else
             iColor = -1;

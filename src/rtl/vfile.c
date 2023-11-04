@@ -521,7 +521,7 @@ HB_FUNC( HB_VFLOCK )
       HB_ERRCODE uiError = 0;
       HB_BOOL fResult = HB_FALSE;
 
-      if( HB_ISNUM( 2 ) && HB_ISNUM( 3 ) )
+      if( HB_ISNUMBER( 2 ) && HB_ISNUMBER( 3 ) )
       {
          fResult = hb_fileLock( pFile,
                                 ( HB_FOFFSET ) hb_parnint( 2 ),
@@ -544,7 +544,7 @@ HB_FUNC( HB_VFUNLOCK )
       HB_ERRCODE uiError = 0;
       HB_BOOL fResult = HB_FALSE;
 
-      if( HB_ISNUM( 2 ) && HB_ISNUM( 3 ) )
+      if( HB_ISNUMBER( 2 ) && HB_ISNUMBER( 3 ) )
       {
          fResult = hb_fileLock( pFile,
                                 ( HB_FOFFSET ) hb_parnint( 2 ),
@@ -567,7 +567,7 @@ HB_FUNC( HB_VFLOCKTEST )
       HB_ERRCODE uiError = 0;
       int iResult = -1;
 
-      if( HB_ISNUM( 2 ) && HB_ISNUM( 3 ) )
+      if( HB_ISNUMBER( 2 ) && HB_ISNUMBER( 3 ) )
       {
          iResult = hb_fileLockTest( pFile,
                                     ( HB_FOFFSET ) hb_parnint( 2 ),
@@ -596,7 +596,7 @@ HB_FUNC( HB_VFREAD )
       if( pBuffer && HB_ISBYREF( 2 ) &&
           hb_itemGetWriteCL( pBuffer, &buffer, &nSize ) )
       {
-         if( HB_ISNUM( 3 ) )
+         if( HB_ISNUMBER( 3 ) )
          {
             nRead = hb_parns( 3 );
             if( nRead < nSize )
@@ -619,7 +619,7 @@ HB_FUNC( HB_VFREADLEN )
 {
    PHB_FILE pFile = hb_fileParam( 1 );
 
-   if( pFile && HB_ISNUM( 2 ) )
+   if( pFile && HB_ISNUMBER( 2 ) )
    {
       HB_ERRCODE uiError = 0;
       HB_SIZE nToRead = hb_parns( 2 );
@@ -656,7 +656,7 @@ HB_FUNC( HB_VFWRITE )
       {
          HB_SIZE nLen = hb_parclen( 2 );
 
-         if( HB_ISNUM( 3 ) )
+         if( HB_ISNUMBER( 3 ) )
          {
             HB_SIZE nWrite = hb_parns( 3 );
             if( nWrite < nLen )
@@ -694,7 +694,7 @@ HB_FUNC( HB_VFREADAT )
       if( pBuffer && HB_ISBYREF( 2 ) &&
           hb_itemGetWriteCL( pBuffer, &buffer, &nSize ) )
       {
-         if( HB_ISNUM( 3 ) )
+         if( HB_ISNUMBER( 3 ) )
          {
             nRead = hb_parns( 3 );
             if( nRead < nSize )
@@ -727,7 +727,7 @@ HB_FUNC( HB_VFWRITEAT )
       {
          HB_SIZE nLen = hb_parclen( 2 );
 
-         if( HB_ISNUM( 3 ) )
+         if( HB_ISNUMBER( 3 ) )
          {
             HB_SIZE nWrite = hb_parns( 3 );
             if( nWrite < nLen )
@@ -758,7 +758,7 @@ HB_FUNC( HB_VFSEEK )
    {
       HB_ERRCODE uiError = 0;
 
-      if( HB_ISNUM( 2 ) )
+      if( HB_ISNUMBER( 2 ) )
       {
          hb_retnint( hb_fileSeek( pFile, ( HB_FOFFSET ) hb_parnint( 2 ),
                                   ( HB_USHORT ) hb_parnidef( 3, FS_SET ) ) );
@@ -847,7 +847,7 @@ HB_FUNC( HB_VFCONFIG )
 
    if( pFile )
    {
-      if( HB_ISNUM( 2 ) )
+      if( HB_ISNUMBER( 2 ) )
       {
          PHB_ITEM pValue = hb_itemNew( hb_param( 3, HB_IT_ANY ) );
 

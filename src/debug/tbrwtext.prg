@@ -48,271 +48,411 @@
 
 #define HB_CLS_NOTOBJECT      /* do not inherit from HBObject class */
 #include "hbclass.ch"
+#include "common.ch"
+#include "fileio.ch"
+#include "inkey.ch"
+#include "setcurs.ch"
 
-CREATE CLASS HBBrwText
 
-   VAR cFileName
-   VAR aRows
-   VAR nRows
-   VAR nLineNoLen
-   VAR nActiveLine
-   VAR lLineNumbers
-   VAR nRow
-   VAR nFirstCol
-   VAR nCol
+// Color definitions and positions inside ::cColorSpec
+#define  CLR_CODE       0        // color of code
+#define  CLR_CURSOR     1        // color of highlighted line (the line to be executed)
+#define  CLR_BKPT       2        // color of breakpoint line
+#define  CLR_HIBKPT     3        // color of highlighted breakpoint line
 
-   VAR oBrw
 
-   VAR nLineOffset   INIT 1
-   VAR nMaxLineLen
-   VAR nTabWidth     INIT 4
+CLASS HBBrwText FROM HBDbBrowser
 
-   VAR nTop
-   VAR nLeft
-   VAR nBottom
-   VAR nRight
+   DATA   cFileName      // the name of the browsed file
+   DATA   nActiveLine    // Active line inside Code Window (the line to be executed)
 
-   VAR nWidth
-   VAR nHeight
+   DATA   aBreakPoints   // Array with line numbers of active Break Points
 
-   METHOD New( nTop, nLeft, nBottom, nRight, cFileName, cColors, lLineNumbers )
+   DATA   lLineNumbers   // If .T. source code lines are preceded by their number
+   DATA   aText          // Text from cFileName
+   DATA   nCurRow       // Current row
+   DATA   nWidth
+   DATA   nColIni
+   DATA   nMargin
+   DATA   nMaxRow
+   DATA   lCodeBlock
 
-   METHOD RefreshAll() INLINE ::oBrw:ForceStable():RefreshAll(), Self
-   METHOD ForceStable() INLINE ::oBrw:ForceStable(), Self
-   METHOD RefreshCurrent() INLINE ::oBrw:RefreshCurrent(), Self
-   METHOD GotoLine( n )
-   METHOD SetActiveLine( n )
-   METHOD GetLine()
-   METHOD GetLineText()
-   METHOD GetLineColor()
-   METHOD Search( cString, lCaseSensitive, nMode )
-
-   METHOD GoFirst()
-   METHOD GoLast()
-   METHOD Skip( n )
-   METHOD GoNext()
-   METHOD GoPrev()
+   METHOD New(nTop, nLeft, nBottom, nRight, cFileName, cColor, lLineNumbers)
 
    METHOD Resize( nTop, nLeft, nBottom, nRight )
 
-   METHOD Up() INLINE ::oBrw:Up():ForceStable(), Self
-   METHOD Down() INLINE ::oBrw:Down():ForceStable(), Self
-   METHOD PageUp() INLINE ::oBrw:PageUp():ForceStable(), Self
-   METHOD PageDown() INLINE ::oBrw:PageDown():ForceStable(), Self
-   METHOD GoTop() INLINE ::oBrw:GoTop():ForceStable(), Self
-   METHOD GoBottom() INLINE ::oBrw:GoBottom():ForceStable(), Self
+   METHOD GotoLine(n)                      // Moves active line cursor
+   METHOD SetActiveLine( n )               // Sets the line to be executed
 
-   METHOD Home() INLINE iif( ::nLineOffset > 1, ( ::nLineOffset := 1, ::oBrw:RefreshAll():ForceStable() ), ), Self
-   METHOD End() INLINE ::nLineOffset := Max( 1, ::nMaxLineLen - ( ::nWidth - iif( ::lLineNumbers, ::nLineNoLen, 0 ) ) + 1 ), ::oBrw:RefreshAll():ForceStable(), Self
+   METHOD GetLine(nRow)                    // Redefine HBEditor method to add line number
+   METHOD LineColor(nDataRow, nRow)        // Redefine HBEditor method to handle line coloring
 
-   METHOD Right() INLINE iif( ::nLineOffset < ::nMaxLineLen + iif( ::lLineNumbers, ::nLineNoLen, 0 ), ( ::nLineOffset++, ::oBrw:RefreshAll():ForceStable() ), ), Self
-   METHOD Left() INLINE iif( ::nLineOffset > 1, ( ::nLineOffset--, ::oBrw:RefreshAll():ForceStable() ), ), Self
+   METHOD ToggleBreakPoint(nRow, lSet)     // if lSet is .T. there is a BreakPoint active at nRow,
+                                           // if lSet is .F. BreakPoint at nRow has to be removed
+   METHOD Search( cString, lCaseSensitive, nMode ) // 0 from Begining to end, 1 Forward, 2 Backwards
 
-   METHOD RowPos() INLINE ::nRow
+   METHOD LoadFile(cFileName,nTab)
 
-   METHOD LoadFile( cFileName )
-
-   VAR colorSpec IS colorSpec IN oBrw
+   METHOD Left()                InLine  If( ::nColIni > 1, ::nColIni--, NIL ), ::RefreshAll(), Self
+   METHOD Right()               InLine  ::nColIni++, ::RefreshAll(), Self
+   METHOD Home()                InLine  ::nColIni := 1, ::RefreshAll(), Self
+   METHOD End()                 InLine  ::nColIni := ::FirstColMaxRight(), ::RefreshAll(), Self
+   METHOD FirstColMaxRight()
 
 ENDCLASS
 
-METHOD New( nTop, nLeft, nBottom, nRight, cFileName, cColors, lLineNumbers ) CLASS HBBrwText
 
-   LOCAL oCol
+METHOD New(nTop, nLeft, nBottom, nRight, cFileName, cColor, lLineNumbers) CLASS HBBrwText
 
-   ::nTop := nTop
-   ::nLeft := nLeft
-   ::nBottom := nBottom
-   ::nRight := nRight
+   Local oCol
 
-   ::nWidth := nRight - nLeft + 1
-   ::nHeight := nBottom - nTop
+   cColor       := hb_defaultValue( cColor, SetColor() )
+   lLineNumbers := hb_defaultValue( lLineNumbers, .T. )
 
-   ::lLineNumbers := lLineNumbers
+   ::Super:New(nTop, nLeft, nBottom, nRight)
 
-   ::oBrw := HBDbBrowser():New( ::nTop, ::nLeft, ::nBottom, ::nRight )
+   ::cFileName     := cFileName
+   ::nActiveLine   := 1
+   ::nCurRow       := 1
+   ::aText         := {}
+   ::nWidth        := nRight - nLeft + 1
+   ::nColIni       := 1
+   ::nMargin       := 0
+   ::nMaxRow       := 0
+   ::lCodeBlock    := .F.
 
-   ::oBrw:colorSpec := cColors
+   ::aBreakPoints  := {}
 
-   oCol := HBDbColumnNew( "", {|| ::GetLineText() } )
+   ::lLineNumbers  := lLineNumbers
 
-   oCol:colorBlock := {|| ::GetLineColor() }
 
-   ::oBrw:AddColumn( oCol )
+   ::GoTopBlock    := { || ::nCurRow := 1 }
+   ::GoBottomBlock := { || ::nCurRow := Len( ::aText ) }
+   ::SkipBlock     := { | nSkip, nOld | nOld := ::nCurRow,;
+                                        ::nCurRow += nSkip,;
+                                        ::nCurRow := Min( Max( ::nCurRow, 1 ),;
+                                        ::nMaxRow ), ::nCurRow - nOld }
 
-   ::oBrw:goTopBlock := {|| ::nRow := 1 }
-   ::oBrw:goBottomBlock := {|| ::nRow := ::nRows }
-   ::oBrw:skipBlock := {| n | ::Skip( n ) }
+   ::AddColumn( oCol := TBColumnNew( "", { || ::GetLine( ::nCurRow ) } ) )
+   oCol:ColorBlock := { | data, row | HB_SYMBOL_UNUSED( data ), ::LineColor( ::nCurRow, row ) }
 
-   IF ! Empty( cFileName )
-      ::LoadFile( cFileName )
-   ENDIF
+   ::ColorSpec := cColor
 
-   RETURN Self
+   ::LoadFile(cFileName)
 
-METHOD GotoLine( n ) CLASS HBBrwText
+return Self
 
-   ::oBrw:MoveCursor( n - ::nRow )
-   ::RefreshAll()
 
-   RETURN Self
+METHOD LoadFile(cFileName, nTab) CLASS HBBrwText
 
-METHOD SetActiveLine( n ) CLASS HBBrwText
+   nTab := hb_defaultValue( nTab, 3 )
+   ::aText := {}
 
-   ::nActiveLine := n
-   ::RefreshAll()
-
-   RETURN Self
-
-METHOD GetLine() CLASS HBBrwText
-   RETURN iif( ::lLineNumbers, PadR( hb_ntos( ::nRow ) + ":", ::nLineNoLen ), "" ) + ;
-      MemoLine( ::aRows[ ::nRow ], ::nMaxLineLen, 1, ::nTabWidth, .F. )
-
-METHOD GetLineText() CLASS HBBrwText
-   RETURN PadR( SubStr( ::GetLine(), ::nLineOffset ), ::nWidth )
-
-METHOD GetLineColor() CLASS HBBrwText
-
-   LOCAL aColor
-
-   IF __dbgIsBreak( __dbg():pInfo, ::cFileName, ::nRow ) >= 0
-      aColor := iif( ::nRow == ::nActiveLine, { 4, 4 }, { 3, 3 } )
-   ELSE
-      aColor := iif( ::nRow == ::nActiveLine, { 2, 2 }, { 1, 1 } )
-   ENDIF
-
-   RETURN aColor
-
-METHOD PROCEDURE LoadFile( cFileName ) CLASS HBBrwText
-
-   LOCAL nMaxLineLen := 0
-   LOCAL cLine
+   EvalTxtFile( cFileName, { | cLine | AAdd( ::aText, StrTran( cLine, Chr( K_TAB ), Space(nTab) ) ), .T. } )
 
    ::cFileName := cFileName
-   ::aRows := __dbgTextToArray( MemoRead( cFileName ) )
-   ::nRows := Len( ::aRows )
-   ::nLineNoLen := Len( hb_ntos( ::nRows ) ) + 2
+   ::nMaxRow     := Len( ::aText )
+   ::nMargin     := Len( AllTrim( Str( ::nMaxRow ) ) ) + 2
+   ::nActiveLine := 0
 
-   FOR EACH cLine IN ::aRows
-      nMaxLineLen := Max( nMaxLineLen, ;
-         Len( RTrim( MemoLine( cLine, Len( cLine ) + 256, 1, ::nTabWidth, .F. ) ) ) )
-   NEXT
-   ::nMaxLineLen := nMaxLineLen
-   ::nLineOffset := 1
+   ::GoTop()
 
-   RETURN
+   If Len( ::aText ) < ::rowCount()
+      ::nMaxRow := ::rowCount()
+   EndIf
 
+return Self
+
+
+/* This method is to restore correct cursor position after Super:Resize() */
 METHOD Resize( nTop, nLeft, nBottom, nRight ) CLASS HBBrwText
 
-   LOCAL lResize := .F.
+   ::nTop    := nTop
+   ::nLeft   := nLeft
+   ::nBottom := nBottom
+   ::nRight  := nRight
+   ::nWidth  := nRight - nLeft + 1
+   // ::GotoLine( ::nCurRow )
 
-   IF HB_ISNUMERIC( nTop ) .AND. nTop != ::nTop
-      ::nTop := nTop
-      lResize := .T.
-   ENDIF
-   IF HB_ISNUMERIC( nLeft ) .AND. nLeft != ::nLeft
-      ::nLeft := nLeft
-      lResize := .T.
-   ENDIF
-   IF HB_ISNUMERIC( nBottom ) .AND. nBottom != ::nBottom
-      ::nBottom := nBottom
-      lResize := .T.
-   ENDIF
-   IF HB_ISNUMERIC( nRight ) .AND. nRight != ::nRight
-      ::nRight := nRight
-      lResize := .T.
-   ENDIF
-   IF lResize
-      ::oBrw:Resize( nTop, nLeft, nBottom, nRight )
-      ::nWidth := ::nRight - ::nLeft + 1
-   ENDIF
+RETURN Self
 
-   RETURN Self
+
+METHOD SetActiveLine( n ) CLASS HBBrwText
+   ::nActiveLine := n
+   ::RefreshAll()
+return Self
+
+
+METHOD GotoLine(n) CLASS HBBrwText
+
+  local nAux
+
+  DispBegin()
+  If n != NIL .and. n > 0
+
+     nAux := n - ::nCurRow + 1
+
+     If nAux > 0 .And. nAux <= ::rowCount
+
+        ::rowPos := nAux
+
+     Else
+
+        ::rowPos  := 1
+        ::RefreshAll()
+        ::ForceStable()
+        ::nCurRow := Max( n - Round( ::rowCount() / 2, 0 ), 1 )
+        If Len( ::aText ) >= ::rowCount()
+           If ::nCurRow + ( ::rowCount() - 1 ) > Len( ::aText )
+              ::nCurRow := Max( Len( ::aText ) - ::rowCount() + 1, 1 )
+           EndIf
+        Else
+           ::nMaxRow := ::nCurRow + ::rowCount() - 1
+           ::nMargin := Len( AllTrim( Str( ::nMaxRow ) ) ) + 2
+        EndIf
+
+        ::rowPos  += ( n - ::nCurRow )
+
+     EndIf
+
+  Else
+     ::nCurRow := 1
+     ::nMaxRow := ::rowCount()
+     ::nMargin := Len( AllTrim( Str( ::nMaxRow ) ) ) + 2
+  EndIf
+
+  // ::RefreshAll()
+  // ::ForceStable()
+
+  DispEnd()
+
+return Self
+
+METHOD GetLine(nRow) CLASS HBBrwText
+
+   If ::lCodeBlock .And. nRow == ::nActiveLine
+      Return( PadR( SubStr( If(::lLineNumbers, PadR( AllTrim(Str(nRow)) + ":", ::nMargin ), "") + "{|| ... } " + If( nRow > 0 .And. nRow <= Len( ::aText ), ::aText[ nRow ], "" ), ::nColIni ), ::nWidth ) )
+   Else
+      Return( PadR( SubStr( If(::lLineNumbers, PadR( AllTrim(Str(nRow)) + ":", ::nMargin ), "") + If( nRow > 0 .And. nRow <= Len( ::aText ), ::aText[ nRow ], "" ), ::nColIni ), ::nWidth ) )
+   EndIf
+
+Return ""
+
+METHOD LineColor( nDataRow, nRow ) CLASS HBBrwText
+
+   local nNormalColor
+   local nSelColor
+
+   // ::cCurRow -> 22
+   // ::rowPos -> 9
+   if AScan( ::aBreakPoints, nDataRow ) > 0
+      nNormalColor := 3
+      if nRow == ::rowPos .And. nDataRow != ::nActiveLine
+         nSelColor := 6
+      else
+         nSelColor := 3
+      endif   
+   else
+      nNormalColor := 1
+      if nRow == ::rowPos .And. nDataRow != ::nActiveLine
+         nSelColor := 5
+      else
+         nSelColor := 1
+      endif
+   endif
+
+   if nDataRow == ::nActiveLine
+      nNormalColor += 1
+      nSelColor    += 1
+   endif
+
+return( { nNormalColor, nSelColor } )
+
+
+METHOD ToggleBreakPoint( nRow, lSet ) CLASS HBBrwText
+
+   local nAt := AScan( ::aBreakPoints, nRow )
+
+   if lSet
+      // add it only if not present
+      if nAt == 0
+         AAdd( ::aBreakPoints, nRow )
+      endif
+
+   elseif nAt != 0
+
+      hb_ADel( ::aBreakPoints, nAt, .T. )
+
+   endif
+
+return Self
 
 METHOD Search( cString, lCaseSensitive, nMode ) CLASS HBBrwText
 
-   LOCAL bMove
-   LOCAL lFound := .F.
-   LOCAL n
+   local nFrom, nTo, nFor
+   local lFound
 
-   IF ! lCaseSensitive
+   lCaseSensitive := hb_defaultValue( lCaseSensitive, .f. )
+   nMode          := hb_defaultValue( nMode, 0 )
+
+   lFound := .f.
+
+   if !lCaseSensitive
       cString := Upper( cString )
-   ENDIF
+   endif
 
-   SWITCH hb_defaultValue( nMode, 0 )
-   CASE 0  // From Top
-      ::GoTop()
-      bMove := {|| ::Skip( 1 ) }
-      EXIT
-   CASE 1  // Forward
-      bMove := {|| ::Skip( 1 ) }
-      EXIT
-   CASE 2  // Backward
-      bMove := {|| ::Skip( -1 ) }
-      EXIT
-   ENDSWITCH
+   do case
+   case nMode == 0 // From Top
+      nFrom := 1
+      nTo   := Len( ::aText )
+   case nMode == 1 // Forward
+      nFrom := Min( ::nCurRow + 1, Len( ::aText ) )
+      nTo   := Len( ::aText )
+   case nMode == 2 // Backward
+      nFrom := Max( ::nCurRow - 1, 1 )
+      nTo   := 1
+   end case
 
-   n := ::nRow
+   for nFor := nFrom to nTo
+      // Alert( AllTrim( Str( nFor ) ) + "[" + cString + "]:" + ::GetLine( nFor ) )
+      if cString $ iif( lCaseSensitive, ::GetLine( nFor ), Upper( ::GetLine( nFor ) ) )
+         lFound := .t.
+         ::GotoLine( nFor )
+         exit
+      endif
+   next
 
-   DO WHILE Eval( bMove ) != 0
-      IF cString $ iif( lCaseSensitive, ::aRows[ ::nRow ], Upper( ::aRows[ ::nRow ] ) )
-         lFound := .T.
-         ::oBrw:MoveCursor( ::nRow - n )
-         ::RefreshAll()
-         EXIT
-      ENDIF
-   ENDDO
+return lFound
 
-   RETURN lFound
+METHOD FirstColMaxRight() CLASS HBBrwText
 
-METHOD GoFirst() CLASS HBBrwText
+   Local nFirstCol := 1
+   Local nLoop
+   Local nAux
 
-   ::nRow := 1
+   For nLoop := ::nCurRow - ::rowPos + 1 To ::nCurRow + ::rowCount() - ::rowPos
 
-   RETURN .T.
+      If nLoop > 0 .And. nLoop <= Len( ::aText )
 
-METHOD GoLast() CLASS HBBrwText
+         nAux := Len( ::aText[ nLoop ] ) - ( ::nWidth - If( ::lLineNumbers, ::nMargin, 0 ) ) + 1
+         If nAux > nFirstCol
+            nFirstCol := nAux
+         EndIf
 
-   ::nRow := ::nRows
+      EndIf
 
-   RETURN .T.
+   Next
 
-METHOD Skip( n ) CLASS HBBrwText
+Return( nFirstCol )
 
-   LOCAL nSkipped := 0
+#PRAGMA BEGINDUMP
 
-   IF n > 0
-      IF ::nRow < ::nRows
-         nSkipped := Min( ::nRows - ::nRow, n )
-         ::nRow += nSkipped
-      ENDIF
-   ELSEIF n < 0
-      IF ::nRow > 1
-         nSkipped := Max( 1 - ::nRow, n )
-         ::nRow += nSkipped
-      ENDIF
-   ENDIF
+#include "hbapi.h"
+#include "hbvmpub.h"
+#include "hbapiitm.h"
+#include "hbvm.h"
+#include "hbapierr.h"
+#include "hbstack.h"
+#include "hbapifs.h"
 
-   RETURN nSkipped
+#define MAX_BLOCO 16384 // 8192 // 32768
 
-METHOD GoPrev() CLASS HBBrwText
+HB_FUNC( EVALTXTFILE )
+{
+   PHB_ITEM   phbFile     = hb_param( 1 , HB_IT_STRING );
+   PHB_ITEM   phbBlock    = hb_param( 2 , HB_IT_BLOCK  );
+   HB_BOOL    lContinue   = HB_TRUE;
+   HB_BOOL    lRead       = HB_FALSE;
+   HB_BOOL    lEmpty      = HB_TRUE;
+   int        nBytesRead;
+   int        nPos;
+   int        nRowLen   = 0;
+   HB_FHANDLE hFile;
+   PHB_ITEM   phbRow;
+   PHB_ITEM   pReturn;
+   char       pBuffer[ MAX_BLOCO ];
+   char       pRow[ MAX_BLOCO ];
 
-   LOCAL lMoved := .F.
+   if ( phbFile && phbBlock )
+   {
+      // Abre o arquivo
+      hFile = hb_fsOpen( (const char *) hb_itemGetCPtr( phbFile ), 0 );
 
-   IF ::nRow > 1
-      ::nRow--
-      lMoved := .T.
-   ENDIF
+      if ( hFile > 0 )
+      {
 
-   RETURN lMoved
+         phbRow = hb_itemNew( NULL );
 
-METHOD GoNext() CLASS HBBrwText
+         // Le o arquivo em blocos de MAX_BLOCO bytes
+         while ( lContinue && ( nBytesRead = hb_fsRead( hFile, pBuffer, MAX_BLOCO ) ) > 0 )
+         {
 
-   LOCAL lMoved := .F.
+            lEmpty = HB_FALSE;
+            nPos = 0;
 
-   IF ::nRow < ::nRows
-      ::nRow++
-      lMoved := .T.
-   ENDIF
+            while ( lContinue && nPos < nBytesRead )
+            {
+               // Verifica se a string nao extrapola o tamanho maximo da linha...
+               if ( nRowLen < MAX_BLOCO )
+               {
+                  while( nPos < nBytesRead && pBuffer[ nPos ] != '\n' )
+                  {
+                     pRow[ nRowLen++ ] = pBuffer[ nPos++ ];
+                  }
 
-   RETURN lMoved
+                  // Verifica se nao chegou no final do buffer sem encontrar algum caracter de final de linha
+                  if ( nPos < nBytesRead )
+                  {
+
+                     if ( nRowLen > 0 && pRow[ nRowLen - 1 ] == '\r' )
+                     {
+                        nRowLen--;
+                     }
+
+                     pRow[ nRowLen ] = '\0';
+
+                     hb_itemPutC( phbRow, pRow );
+
+                     // Executa o codeblock
+                     pReturn = hb_vmEvalBlockV( phbBlock, 1, phbRow ); // Executa o CodeBlock passado para a funcao
+
+                     hb_itemClear( phbRow );
+
+                     // Verifica o retorno do codeblock
+                     lContinue = hb_itemGetL( pReturn );
+
+                     nPos++;
+
+                     // Nova linha...
+                     nRowLen = 0;
+                  }
+               }
+               else
+               {
+                  // Gerar um erro aqui... Linha maior que MAX_BLOCO
+                  lContinue = HB_FALSE;
+               }
+            }
+
+         }
+
+         // Ultima linha do arquivo sem Chr(13) e chr( 10 )
+         if ( ! lEmpty )
+         {
+            hb_itemPutCL( phbRow, pRow, nRowLen );
+            hb_vmEvalBlockV( phbBlock, 1, phbRow ); // Executa o CodeBlock passado para a funcao
+            hb_itemClear( phbRow );
+         }
+ 
+         hb_itemRelease( phbRow );
+         hb_fsClose( hFile );
+         lRead = HB_TRUE;
+      }
+
+   }
+
+   hb_retl( lRead );
+}
+
+#PRAGMA ENDDUMP
+

@@ -383,6 +383,47 @@ void hb_memvarSetValue( PHB_SYMB pMemvarSymb, PHB_ITEM pItem )
       hb_errInternal( HB_EI_MVBADSYMBOL, NULL, pMemvarSymb->szName, NULL );
 }
 
+/*
+ * This functions copies passed item value into the memvar pointed
+ * by symbol. Copy of hb_memvarSetValue, but with default scope as 
+ * HB_VSCOMP_PUBLIC.
+ *
+ * pMemvar - symbol associated with a variable
+ * pItem   - value to store in memvar
+ *
+ */
+void hb_memvarSetValuePub( PHB_SYMB pMemvarSymb, PHB_ITEM pItem )
+{
+   PHB_DYNS pDyn;
+
+   HB_TRACE( HB_TR_DEBUG, ( "hb_memvarSetValue(%p, %p)", pMemvarSymb, pItem ) );
+
+   pDyn = pMemvarSymb->pDynSym;
+   if( pDyn )
+   {
+      PHB_ITEM pMemvar;
+
+      pMemvar = hb_dynsymGetMemvar( pDyn );
+
+      HB_TRACE( HB_TR_INFO, ( "Memvar item (%p)(%s) assigned", pMemvar, pMemvarSymb->szName ) );
+
+      if( pMemvar )
+      {
+         /* value is already created */
+         hb_itemCopyToRef( pMemvar, pItem );
+         /* Remove MEMOFLAG if exists (assignment from field). */
+         pMemvar->type &= ~HB_IT_MEMOFLAG;
+      }
+      else
+      {
+         /* assignment to undeclared memvar - PRIVATE is assumed */
+         hb_memvarCreateFromDynSymbol( pDyn, HB_VSCOMP_PUBLIC, pItem );
+      }
+   }
+   else
+      hb_errInternal( HB_EI_MVBADSYMBOL, NULL, pMemvarSymb->szName, NULL );
+}
+
 HB_ERRCODE hb_memvarGet( PHB_ITEM pItem, PHB_SYMB pMemvarSymb )
 {
    PHB_DYNS pDyn;

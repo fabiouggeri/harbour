@@ -53,7 +53,7 @@
 static void hb_readLine( const char * szText, HB_SIZE nTextLen, HB_SIZE nLineLen, HB_SIZE nTabLen, HB_BOOL bWrap, const char ** pTerm, HB_SIZE * pnTermSizes, HB_SIZE nTerms, HB_BOOL * pbFound, HB_BOOL * pbEOF, HB_ISIZ * pnEnd, HB_SIZE * pnEndOffset )
 {
    HB_SIZE nPosTerm, nPosition;
-   HB_SIZE nPos, nCurrCol, nLastBlk;
+   HB_SIZE nPos, nCurrCol, nLastBlk, ulSkipChar;
    HB_BOOL bBreak = HB_FALSE;
 
    HB_TRACE( HB_TR_DEBUG, ( "hb_readLine(%p, %" HB_PFS "u, %" HB_PFS "u, %" HB_PFS "u, %d, %p, %p, %" HB_PFS "u, %p, %p, %p, %p)",
@@ -66,6 +66,7 @@ static void hb_readLine( const char * szText, HB_SIZE nTextLen, HB_SIZE nLineLen
    *pnEndOffset = 0;
    nCurrCol     = 0;
    nLastBlk     = 0;
+   ulSkipChar   = 0;
 
    if( nTextLen == 0 )
    {
@@ -79,6 +80,12 @@ static void hb_readLine( const char * szText, HB_SIZE nTextLen, HB_SIZE nLineLen
 
    for( nPos = 0; nPos < nTextLen; nPos++ )
    {
+      // ignora caracteres de controle (compatibiliza‡Æo com clipper)
+		if( szText[nPos] == HB_CHAR_SOFT1 || szText[nPos] == HB_CHAR_SOFT2 )
+		{
+			ulSkipChar++;
+		}
+      
       /* Check for line terminators */
       for( nPosTerm = 0; nPosTerm < nTerms; nPosTerm++ )
       {
@@ -137,7 +144,7 @@ static void hb_readLine( const char * szText, HB_SIZE nTextLen, HB_SIZE nLineLen
          nLastBlk = nPos;
       }
 
-      if( nCurrCol > nLineLen )
+      if( nCurrCol > nLineLen + ulSkipChar )
       {
          if( ! bWrap || nLastBlk == 0 )
          {

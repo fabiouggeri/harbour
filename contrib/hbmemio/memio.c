@@ -192,22 +192,8 @@ static HB_ULONG memfsInodeFind( const char * szName, HB_ULONG * pulPos )
    return 0;
 }
 
-
-static PHB_MEMFS_INODE memfsInodeAlloc( const char * szName )
-{
-   PHB_MEMFS_INODE pInode = ( PHB_MEMFS_INODE ) hb_xgrab( sizeof( HB_MEMFS_INODE ) );
+static void memfsInsertNode(PHB_MEMFS_INODE pInode) {
    HB_ULONG ulInode = 0;
-
-   pInode->llSize = 0;
-   pInode->llAlloc = HB_MEMFS_INITSIZE;
-   pInode->pData = ( char * ) hb_xgrab( ( HB_ULONG ) pInode->llAlloc );
-   memset( pInode->pData, 0, ( HB_SIZE ) pInode->llAlloc );
-   pInode->szName = hb_strdup( szName );
-
-   pInode->uiCount = 1;
-   pInode->uiCountRead = pInode->uiCountWrite = 0;
-   pInode->uiDeny = 0;
-
    /* Insert into inode array. Inode should not exist!!! */
    if( s_fs.ulInodeCount >= s_fs.ulInodeAlloc )
    {
@@ -215,10 +201,10 @@ static PHB_MEMFS_INODE memfsInodeAlloc( const char * szName )
       s_fs.pInodes = ( PHB_MEMFS_INODE * ) hb_xrealloc( s_fs.pInodes, s_fs.ulInodeAlloc * sizeof( PHB_MEMFS_INODE ) );
    }
 
-   if( memfsInodeFind( szName, &ulInode ) )
+   if( memfsInodeFind( pInode->szName, &ulInode ) )
    {
-      hb_errInternal( 9999, "memfsInodeAlloc: Inode already exists", NULL, NULL );
-      return NULL;
+      hb_errInternal( 9999, "memfsInsertNode: Inode already exists", NULL, NULL );
+      return;
    }
 
    if( ulInode < s_fs.ulInodeCount )
@@ -227,6 +213,30 @@ static PHB_MEMFS_INODE memfsInodeAlloc( const char * szName )
    }
    s_fs.pInodes[ ulInode ] = pInode;
    s_fs.ulInodeCount++;
+}
+
+static void memfsDeleteNode( HB_ULONG ulInode ) {
+   if( ulInode < s_fs.ulInodeCount ) {
+      s_fs.ulInodeCount--;
+      memmove( s_fs.pInodes + ulInode, s_fs.pInodes + ulInode + 1, ( s_fs.ulInodeCount - ulInode ) * sizeof( PHB_MEMFS_INODE ) );
+   }
+}
+
+static PHB_MEMFS_INODE memfsInodeAlloc( const char * szName )
+{
+   PHB_MEMFS_INODE pInode = ( PHB_MEMFS_INODE ) hb_xgrab( sizeof( HB_MEMFS_INODE ) );
+
+   pInode->llSize = 0;
+   pInode->llAlloc = HB_MEMFS_INITSIZE;
+   pInode->pData = ( char * ) hb_xgrab( ( HB_ULONG ) pInode->llAlloc );
+   memset( pInode->pData, 0, ( HB_SIZE ) pInode->llAlloc );
+   pInode->szName = hb_strdup( szName );
+
+   pInode->uiCount = 0;
+   pInode->uiCountRead = pInode->uiCountWrite = 0;
+   pInode->uiDeny = 0;
+
+   memfsInsertNode(pInode);
    return pInode;
 }
 
@@ -318,27 +328,24 @@ HB_MEMFS_EXPORT HB_BOOL hb_memfsFileExists( const char * szName )
    return bRet;
 }
 
-
 HB_MEMFS_EXPORT HB_BOOL hb_memfsDelete( const char * szName )
 {
    PHB_MEMFS_INODE pInode;
-   HB_ULONG ulFile;
+   HB_ULONG ulInode;
 
    HB_MEMFSMT_LOCK();
-   if( ( ulFile = memfsInodeFind( szName, NULL ) ) == 0 )
+   if( ( ulInode = memfsInodeFind( szName, NULL ) ) == 0 )
    {
       HB_MEMFSMT_UNLOCK();
       return HB_FALSE;
    }
-   pInode = s_fs.pInodes[ ulFile - 1 ];
-
-   if( ulFile < s_fs.ulInodeCount )
-      memmove( s_fs.pInodes + ulFile - 1, s_fs.pInodes + ulFile, ( s_fs.ulInodeCount - ulFile ) * sizeof( PHB_MEMFS_INODE ) );
-
-   s_fs.ulInodeCount--;
-
-   if( --pInode->uiCount == 0 )
-      memfsInodeFree( pInode );
+   pInode = s_fs.pInodes[ ulInode - 1 ];
+   if (pInode->uiCount > 0) {
+      HB_MEMFSMT_UNLOCK();
+      return HB_FALSE; /* in use */
+   }
+   memfsDeleteNode( ulInode - 1 );
+   memfsInodeFree( pInode );
    HB_MEMFSMT_UNLOCK();
    return HB_TRUE;
 }
@@ -346,6 +353,7 @@ HB_MEMFS_EXPORT HB_BOOL hb_memfsDelete( const char * szName )
 
 HB_MEMFS_EXPORT HB_BOOL hb_memfsRename( const char * szName, const char * szNewName )
 {
+   PHB_MEMFS_INODE pInode;
    HB_ULONG ulInode;
 
    HB_MEMFSMT_LOCK();
@@ -361,8 +369,15 @@ HB_MEMFS_EXPORT HB_BOOL hb_memfsRename( const char * szName, const char * szNewN
       /* File already exists */
       return HB_FALSE;
    }
-   hb_xfree( s_fs.pInodes[ ulInode - 1 ]->szName );
-   s_fs.pInodes[ ulInode - 1 ]->szName = hb_strdup( szNewName );
+   pInode = s_fs.pInodes[ ulInode - 1 ];
+   if (pInode->uiCount > 0) {
+      HB_MEMFSMT_UNLOCK();
+      return HB_FALSE; /* in use */
+   }
+   memfsDeleteNode( ulInode - 1 );
+   hb_xfree( pInode->szName );
+   pInode->szName = hb_strdup( szNewName );
+   memfsInsertNode( pInode );
    HB_MEMFSMT_UNLOCK();
    return HB_TRUE;
 }
@@ -555,18 +570,13 @@ HB_MEMFS_EXPORT void hb_memfsClose( HB_FHANDLE hFile )
    s_fs.pFiles[ hFile - 1 ] = NULL;
    pInode = pFile->pInode;
 
-   if( --pInode->uiCount == 0 )
-   {
-      memfsInodeFree( pInode );
-   }
-   else
-   {
-      if( pFile->uiFlags & FOX_READ )
-         pInode->uiCountRead--;
-      if( pFile->uiFlags & FOX_WRITE )
-         pInode->uiCountWrite--;
-      pInode->uiDeny ^= pFile->uiFlags & FOX_DENYFLAGS;
-   }
+   --pInode->uiCount;
+   if( pFile->uiFlags & FOX_READ )
+      pInode->uiCountRead--;
+   if( pFile->uiFlags & FOX_WRITE )
+      pInode->uiCountWrite--;
+   pInode->uiDeny ^= pFile->uiFlags & FOX_DENYFLAGS;
+   
    HB_MEMFSMT_UNLOCK();
    hb_xfree( pFile );
 }
@@ -834,8 +844,10 @@ static HB_BOOL s_fileRename( PHB_FILE_FUNCS pFuncs, const char * szName, const c
    szName += FILE_PREFIX_LEN;
    if( s_fileAccept( pFuncs, szNewName ) )
    {
+      HB_BOOL bSuccess;
       szNewName += FILE_PREFIX_LEN;
-      return hb_memfsRename( szName, szNewName );
+      bSuccess = hb_memfsRename( szName, szNewName );
+      return bSuccess;
    }
    return HB_FALSE;
 }
